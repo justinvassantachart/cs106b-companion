@@ -376,9 +376,10 @@ struct Tracer<T*> : TracerBase {
     string getValue() const override {
         if (ref == nullptr) return "nullptr";
         stringstream ss;
-        ss << ref; 
-        // Maybe peek at value if it's a known struct? 
-        // For now just address
+        // Print address
+        ss << ref;
+        // Print dereferenced value
+        ss << " -> " << *ref;
         return ss.str();
     }
 };

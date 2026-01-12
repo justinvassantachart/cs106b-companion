@@ -177,14 +177,15 @@
           </table>
 
           <!-- Simple Stack Display at bottom -->
+          <!-- Simple Stack Display at bottom -->
           <div *ngIf="isPaused && debugStack.length" class="border-t border-slate-800 mt-auto">
             <div class="px-3 py-1 bg-slate-900 text-[10px] text-slate-500 font-bold uppercase">Call Stack</div>
-            <div class="font-mono text-xs text-slate-400">
-              <div *ngFor="let s of debugStack; let i = index"
+            <div class="font-mono text-xs text-slate-400 flex flex-col-reverse">
+              <div *ngFor="let s of debugStack; let i = index; let last = last"
                 class="px-3 py-1 border-b border-slate-800/30 flex justify-between items-center"
-                [class.bg-sky-500/10]="i === 0" [class.text-sky-300]="i === 0">
+                [class.bg-sky-500/10]="last" [class.text-sky-300]="last">
                 <span>{{s}}</span>
-                <span *ngIf="i===0" class="text-[9px] text-sky-500 uppercase font-bold tracking-wider">Current</span>
+                <span *ngIf="last" class="text-[9px] text-sky-500 uppercase font-bold tracking-wider">Current</span>
               </div>
             </div>
           </div>

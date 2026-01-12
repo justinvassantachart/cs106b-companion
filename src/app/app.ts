@@ -102,19 +102,7 @@ export class App {
       this.worker.onmessage = ({ data }) => {
         if (data.type === 'log') {
           this.ngZone.run(() => {
-            const text = data.text;
-
-            // Check for debug data enclosed in special markers
-            if (text.includes('[DEBUG:VARS:START]')) {
-              this.parseDebugData(text);
-              // Filter out debug logs from user console
-              const cleanText = text.replace(/\[DEBUG:VARS:START\][\s\S]*?\[DEBUG:VARS:END\]\n?/, '')
-                .replace(/\[DEBUG:STACK:START\][\s\S]*?\[DEBUG:STACK:END\]\n?/, '');
-              if (cleanText.trim()) this.outputLogs += cleanText;
-            } else {
-              this.outputLogs += text;
-              this.parseTestResult(text);
-            }
+            this.processWorkerOutput(data.text);
             this.cdr.detectChanges();
           });
         } else if (data.type === 'finished') {
@@ -144,23 +132,7 @@ export class App {
     }
   }
 
-  private parseTestResult(log: string) {
-    const lines = log.split('\n');
-    for (const line of lines) {
-      if (line.includes('[TEST:PASS]')) {
-        const expression = line.split('[TEST:PASS]')[1].trim();
-        this.testResults.push({ pass: true, expression });
-      } else if (line.includes('[TEST:FAIL]')) {
-        // [TEST:FAIL] expr == expr Expected: x Actual: y
-        const parts = line.split('[TEST:FAIL]')[1].split('Expected:');
-        const expression = parts[0].trim();
-        const rest = parts[1] ? parts[1].split('Actual:') : [];
-        const expected = rest[0]?.trim();
-        const actual = rest[1]?.trim();
-        this.testResults.push({ pass: false, expression, expected, actual });
-      }
-    }
-  }
+
 
   step() {
     if (!this.sharedBuffer) return;
@@ -199,21 +171,80 @@ export class App {
   debugVars: { name: string, value: string }[] = [];
   debugStack: string[] = [];
 
-  private parseDebugData(text: string) {
-    // Extract VARS section
-    const varMatch = text.match(/\[DEBUG:VARS:START\]([\s\S]*?)\[DEBUG:VARS:END\]/);
-    if (varMatch) {
-      const varLines = varMatch[1].trim().split('\n');
-      this.debugVars = varLines.filter(l => l.includes('|')).map(line => {
-        const [name, ...valParts] = line.split('|');
-        return { name, value: valParts.join('|') };
-      });
-    }
+  private logBuffer = "";
+  private isCapturingVars = false;
+  private isCapturingStack = false;
+  private capturedVarsLines: string[] = [];
+  private capturedStackLines: string[] = [];
 
-    // Extract STACK section
-    const stackMatch = text.match(/\[DEBUG:STACK:START\]([\s\S]*?)\[DEBUG:STACK:END\]/);
-    if (stackMatch) {
-      this.debugStack = stackMatch[1].trim().split('\n').filter(s => s.trim().length > 0);
+  private processWorkerOutput(chunk: string) {
+    this.logBuffer += chunk;
+
+    let newlineIdx: number;
+    while ((newlineIdx = this.logBuffer.indexOf('\n')) !== -1) {
+      const line = this.logBuffer.slice(0, newlineIdx + 1); // keep newline for raw output if needed
+      this.logBuffer = this.logBuffer.slice(newlineIdx + 1);
+
+      const trimmed = line.trim();
+
+      if (trimmed === '[DEBUG:VARS:START]') {
+        this.isCapturingVars = true;
+        this.capturedVarsLines = [];
+        continue;
+      }
+      if (trimmed === '[DEBUG:VARS:END]') {
+        this.isCapturingVars = false;
+        this.updateDebugVars();
+        continue;
+      }
+      if (trimmed === '[DEBUG:STACK:START]') {
+        this.isCapturingStack = true;
+        this.capturedStackLines = [];
+        continue;
+      }
+      if (trimmed === '[DEBUG:STACK:END]') {
+        this.isCapturingStack = false;
+        this.debugStack = [...this.capturedStackLines];
+        continue;
+      }
+
+      if (this.isCapturingVars) {
+        if (trimmed) this.capturedVarsLines.push(trimmed);
+      } else if (this.isCapturingStack) {
+        if (trimmed) this.capturedStackLines.push(trimmed);
+      } else {
+        // Normal log output
+        this.outputLogs += line;
+        this.parseTestResult(line);
+      }
+    }
+  }
+
+  private updateDebugVars() {
+    this.debugVars = this.capturedVarsLines.map(line => {
+      // format: name|value OR name|complex|value etc.
+      // We split by first pipe
+      const pipeIdx = line.indexOf('|');
+      if (pipeIdx === -1) return { name: line, value: '??' };
+
+      const name = line.substring(0, pipeIdx);
+      const value = line.substring(pipeIdx + 1);
+      return { name, value };
+    });
+  }
+
+  private parseTestResult(line: string) {
+    if (line.includes('[TEST:PASS]')) {
+      const expression = line.split('[TEST:PASS]')[1].trim();
+      this.testResults.push({ pass: true, expression });
+    } else if (line.includes('[TEST:FAIL]')) {
+      // [TEST:FAIL] expr == expr Expected: x Actual: y
+      const parts = line.split('[TEST:FAIL]')[1].split('Expected:');
+      const expression = parts[0].trim();
+      const rest = parts[1] ? parts[1].split('Actual:') : [];
+      const expected = rest[0]?.trim();
+      const actual = rest[1]?.trim();
+      this.testResults.push({ pass: false, expression, expected, actual });
     }
   }
 }

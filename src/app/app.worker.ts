@@ -42,15 +42,50 @@ async function bootstrap() {
   api.memfs.addFile('stanford.h', STANFORD_SHIM);
 }
 
+const originalInstantiate = WebAssembly.instantiate;
+let sharedBuffer: Int32Array | null = null;
+
+// Override allow injecting imports (monkey-patch)
+// @ts-ignore
+WebAssembly.instantiate = (moduleObject: WebAssembly.Module | BufferSource, importObject?: WebAssembly.Imports) => {
+  // Inject debug_wait
+  if (importObject && importObject['env']) {
+    // @ts-ignore
+    importObject['env']._debug_wait = (line: number) => {
+      if (!sharedBuffer) return;
+
+      // Check if we are in RUN mode (2)
+      if (Atomics.load(sharedBuffer, 0) === 2) {
+        // Optional: Rate limit updates to avoid UI flooding
+        // postMessage({ type: 'debug-line', line }); 
+        return;
+      }
+
+      // Otherwise, we pause.
+      // 1. Reset state to PAUSED (0) - effectively consuming the previous 'step' token
+      Atomics.store(sharedBuffer, 0, 0);
+
+      // 2. Notify main thread we are paused
+      postMessage({ type: 'debug-paused', line });
+
+      // 3. Wait until state becomes != 0
+      Atomics.wait(sharedBuffer, 0, 0);
+    };
+  }
+  return originalInstantiate(moduleObject, importObject);
+};
+
 addEventListener('message', async ({ data }) => {
-  if (data.command === 'compile') {
+  if (data.command === 'configure-debug') {
+    sharedBuffer = new Int32Array(data.buffer);
+  } else if (data.command === 'compile') {
     try {
       await bootstrap();
 
       postMessage({ type: 'log', text: '[Worker] Compiling...\n' });
 
       const source = `#include "stanford.h"\n\n${data.code}`;
-      await api.compileLinkRun(source, {});
+      await api.compileLinkRun(source, { clangFlags: [] });
 
       postMessage({ type: 'finished' });
     } catch (e: any) {

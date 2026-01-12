@@ -60,7 +60,11 @@
               "buildTarget": "cs106b-companion:build:production"
             },
             "development": {
-              "buildTarget": "cs106b-companion:build:development"
+              "buildTarget": "cs106b-companion:build:development",
+              "headers": {
+                "Cross-Origin-Opener-Policy": "same-origin",
+                "Cross-Origin-Embedder-Policy": "require-corp"
+              }
             }
           },
           "defaultConfiguration": "development"

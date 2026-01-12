@@ -300,4 +300,8 @@ ostream& operator<<(ostream& os, const GridLocation& g) { os << g.toString(); re
              << " Expected: " << e << " Actual: " << a << endl; \\
     } \\
 }
+extern "C" {
+    void _debug_wait(int line);
+}
+#define DEBUG_STEP(line) _debug_wait(line)
 `;

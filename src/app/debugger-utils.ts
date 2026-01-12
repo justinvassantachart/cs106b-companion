@@ -16,7 +16,7 @@ export function instrumentCode(code: string): string {
         if (line.includes('int main(')) {
             inMain = true;
             instrumentedFn += line + '\n';
-            instrumentedFn += `    DBG_FUNC("main");\n`;
+            instrumentedFn += `    DBG_FUNC(main);\n`;
             instrumentedFn += `    DEBUG_STEP(${i + 2});\n`;
             braceCount = 1; // Assuming main() { is on this line or next. Simplified.
             continue;

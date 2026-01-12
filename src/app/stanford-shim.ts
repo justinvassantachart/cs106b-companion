@@ -414,5 +414,5 @@ extern "C" {
 }
 #define DEBUG_STEP(line) { _debug_dump_vars(); _debug_wait(line); }
 #define DBG_TRACK(name, val) Tracer _dbg_##name(#name, val)
-#define DBG_FUNC(name) FuncTracker _dbg_func_##name(name)
+#define DBG_FUNC(name) FuncTracker _dbg_func_##name(#name)
 `;

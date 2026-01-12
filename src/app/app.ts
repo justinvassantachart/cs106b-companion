@@ -25,7 +25,7 @@ export class App {
   isPaused = false;
   worker: Worker | null = null;
   testResults: { pass: boolean; expression: string; expected?: string; actual?: string }[] = [];
-  activeTab: 'console' | 'tests' = 'console';
+  activeTab: 'console' | 'tests' | 'variables' = 'console';
 
   sharedBuffer: Int32Array | null = null;
 
@@ -102,22 +102,34 @@ export class App {
       this.worker.onmessage = ({ data }) => {
         if (data.type === 'log') {
           this.ngZone.run(() => {
-            this.outputLogs += data.text;
-            this.parseTestResult(data.text);
-            this.cdr.detectChanges(); // Force update
+            const text = data.text;
+
+            // Check for debug data enclosed in special markers
+            if (text.includes('[DEBUG:VARS:START]')) {
+              this.parseDebugData(text);
+              // Filter out debug logs from user console
+              const cleanText = text.replace(/\[DEBUG:VARS:START\][\s\S]*?\[DEBUG:VARS:END\]\n?/, '')
+                .replace(/\[DEBUG:STACK:START\][\s\S]*?\[DEBUG:STACK:END\]\n?/, '');
+              if (cleanText.trim()) this.outputLogs += cleanText;
+            } else {
+              this.outputLogs += text;
+              this.parseTestResult(text);
+            }
+            this.cdr.detectChanges();
           });
         } else if (data.type === 'finished') {
           this.ngZone.run(() => {
             this.outputLogs += "\n[FINISHED]";
             this.isDebugging = false;
             this.isPaused = false;
+            this.debugVars = []; // Clear vars
             if (this.editor) this.editor.setExecutionLine(null);
           });
         } else if (data.type === 'debug-paused') {
           this.ngZone.run(() => {
             this.isPaused = true;
-            // this.outputLogs += `\n[Debugger] Paused at line ${data.line}\n`;
             if (this.editor) this.editor.setExecutionLine(data.line);
+            this.editor?.editor?.revealLineInCenter(data.line);
             this.cdr.detectChanges();
           });
         }
@@ -180,6 +192,29 @@ export class App {
     }
     this.isDebugging = false;
     this.isPaused = false;
+    this.debugVars = [];
     if (this.editor) this.editor.setExecutionLine(null);
+  }
+
+  // Debug Data Parsing
+  debugVars: { name: string, value: string }[] = [];
+  debugStack: string[] = [];
+
+  private parseDebugData(text: string) {
+    // Extract VARS section
+    const varMatch = text.match(/\[DEBUG:VARS:START\]([\s\S]*?)\[DEBUG:VARS:END\]/);
+    if (varMatch) {
+      const varLines = varMatch[1].trim().split('\n');
+      this.debugVars = varLines.filter(l => l.includes('|')).map(line => {
+        const [name, ...valParts] = line.split('|');
+        return { name, value: valParts.join('|') };
+      });
+    }
+
+    // Extract STACK section
+    const stackMatch = text.match(/\[DEBUG:STACK:START\]([\s\S]*?)\[DEBUG:STACK:END\]/);
+    if (stackMatch) {
+      this.debugStack = stackMatch[1].trim().split('\n').filter(s => s.trim().length > 0);
+    }
   }
 }

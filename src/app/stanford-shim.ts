@@ -301,8 +301,118 @@ ostream& operator<<(ostream& os, const GridLocation& g) { os << g.toString(); re
              << " Expected: " << e << " Actual: " << a << endl; \\
     } \\
 }
+// --------------------------------------------------------
+// DEBUGGING / VARIABLE TRACKING
+// --------------------------------------------------------
+struct VarInfo {
+    string name;
+    string type;
+    string value;
+};
+// Abstract base for polymorphism
+struct TracerBase {
+    string name;
+    string type;
+    virtual string getValue() const = 0;
+    virtual ~TracerBase() {}
+};
+
+// Global tracking state
+vector<TracerBase*> _active_vars;
+vector<string> _call_stack;
+
+// Templated tracer captures reference to variable
+template <typename T>
+struct Tracer : TracerBase {
+    const T& ref;
+    Tracer(string n, const T& r) : ref(r) { 
+        name = n; 
+        type = "unknown"; // simplified
+        _active_vars.push_back(this);
+    }
+    ~Tracer() {
+        if (!_active_vars.empty() && _active_vars.back() == this) {
+            _active_vars.pop_back();
+        } else {
+             // Fallback for non-LIFO destruction (shouldn't happen in strict scope)
+             auto it = std::find(_active_vars.rbegin(), _active_vars.rend(), this);
+             if (it != _active_vars.rend()) {
+                 _active_vars.erase(std::next(it).base());
+             }
+        }
+    }
+    string getValue() const override {
+        stringstream ss;
+        // Handle boolean specially for nicer output
+        if constexpr (std::is_same_v<T, bool>) {
+            ss << (ref ? "true" : "false");
+        } else {
+            ss << ref;
+        }
+        return ss.str();
+    }
+};
+
+// Pointer specialization to print address and maybe value?
+template <typename T>
+struct Tracer<T*> : TracerBase {
+    T* const& ref;
+    Tracer(string n, T* const& r) : ref(r) {
+        name = n;
+        type = "ptr";
+        _active_vars.push_back(this);
+    }
+    ~Tracer() {
+         if (!_active_vars.empty() && _active_vars.back() == this) {
+            _active_vars.pop_back();
+        } else {
+             // Fallback
+             auto it = std::find(_active_vars.rbegin(), _active_vars.rend(), this);
+             if (it != _active_vars.rend()) {
+                 _active_vars.erase(std::next(it).base());
+             }
+        }
+    }
+    string getValue() const override {
+        if (ref == nullptr) return "nullptr";
+        stringstream ss;
+        ss << ref; 
+        // Maybe peek at value if it's a known struct? 
+        // For now just address
+        return ss.str();
+    }
+};
+
+// Function Scope Tracker
+struct FuncTracker {
+    string name;
+    FuncTracker(string n) : name(n) { _call_stack.push_back(n); }
+    ~FuncTracker() { 
+        if (!_call_stack.empty()) _call_stack.pop_back(); 
+    }
+};
+
 extern "C" {
     void _debug_wait(int line);
+    // Export simple function to dump vars
+    // We can't return complex strings easily across WASM boundary without malloc helpers
+    // So we'll print a special formatted string to stdout that the worker intercepts
+    void _debug_dump_vars() {
+        cout << "[DEBUG:VARS:START]" << endl;
+        // Reverse iterate to show top of stack first
+        for (auto it = _active_vars.rbegin(); it != _active_vars.rend(); ++it) {
+            cout << (*it)->name << "|" << (*it)->getValue() << endl;
+        }
+        cout << "[DEBUG:VARS:END]" << endl;
+        
+        cout << "[DEBUG:STACK:START]" << endl;
+        for (const auto& func : _call_stack) {
+            cout << func << endl;
+        }
+        cout << "[DEBUG:STACK:END]" << endl;
+    }
 }
-#define DEBUG_STEP(line) _debug_wait(line)
+#define DEBUG_STEP(line) { _debug_dump_vars(); _debug_wait(line); }
+#define DBG_TRACK(name, val) Tracer _dbg_##name(#name, val)
+#define DBG_FUNC(name) FuncTracker _dbg_func_##name(name)
 `;

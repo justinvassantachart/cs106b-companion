@@ -70,13 +70,10 @@
     <div class="flex-1 flex flex-col lg:flex-row min-h-0">
 
       <!-- Editor Pane -->
-      <section class="flex-1 flex flex-col min-h-0 border-b lg:border-b-0 lg:border-r border-slate-800 relative group overflow-hidden">
-        <app-monaco-editor
-          [code]="studentCode"
-          (codeChange)="handleCodeChange($event)"
-          [breakpoints]="breakpoints"
-          (breakpointToggle)="toggleBreakpoint($event)"
-          class="flex-1 w-full h-full block">
+      <section
+        class="flex-1 flex flex-col min-h-0 border-b lg:border-b-0 lg:border-r border-slate-800 relative group overflow-hidden">
+        <app-monaco-editor [code]="studentCode" (codeChange)="handleCodeChange($event)" [breakpoints]="breakpoints"
+          (breakpointToggle)="toggleBreakpoint($event)" class="flex-1 w-full h-full block">
         </app-monaco-editor>
       </section>
 
@@ -96,8 +93,17 @@
             [class.text-slate-500]="activeTab !== 'tests'" [class.border-transparent]="activeTab !== 'tests'"
             (click)="activeTab = 'tests'">
             Test Results
-            <span *ngIf="testResults.length"
-              class="ml-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-sky-400 font-mono">{{testResults.length}}</span>
+            <div *ngIf="testResults.length"
+              class="ml-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-sky-400 font-mono">
+              {{testResults.length}}</div>
+          </button>
+
+          <button *ngIf="isDebugging"
+            class="py-3 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none flex items-center gap-2"
+            [class.border-sky-500]="activeTab === 'variables'" [class.text-sky-400]="activeTab === 'variables'"
+            [class.text-slate-500]="activeTab !== 'variables'" [class.border-transparent]="activeTab !== 'variables'"
+            (click)="activeTab = 'variables'">
+            Variables
           </button>
         </div>
 
@@ -108,9 +114,13 @@
           <div *ngIf="!outputLogs" class="text-slate-700 italic select-none">Ready to run... <br>Select an assignment
             and click Run.</div>
 
-          <div *ngIf="isDebugging" class="mt-2 flex gap-1 items-center text-slate-500">
+          <div *ngIf="isDebugging && !isPaused" class="mt-2 flex gap-1 items-center text-slate-500">
             <span class="w-1.5 h-3 bg-sky-500 animate-pulse"></span>
             <span class="text-[10px]">Running...</span>
+          </div>
+          <div *ngIf="isDebugging && isPaused" class="mt-2 flex gap-1 items-center text-yellow-500">
+            <lucide-icon [img]="icons.Pause" class="w-3 h-3"></lucide-icon>
+            <span class="text-[10px]">Paused</span>
           </div>
         </div>
 
@@ -140,6 +150,46 @@
             <div class="text-sm italic">No tests run yet.</div>
           </div>
         </div>
+
+        <!-- Variables Tab (Stack Visualization) -->
+        <div class="flex-1 overflow-auto p-0 custom-scrollbar bg-slate-950" *ngIf="activeTab === 'variables'">
+          <div *ngIf="!isPaused" class="p-8 flex flex-col items-center justify-center text-slate-600 h-full">
+            <lucide-icon [img]="icons.Play" class="w-8 h-8 opacity-20 mb-2"></lucide-icon>
+            <p class="text-xs italic text-center">Program is running.<br>Pause to view variables.</p>
+          </div>
+
+          <table *ngIf="isPaused" class="w-full text-left border-collapse">
+            <thead class="bg-slate-900 text-slate-500 text-[10px] uppercase tracking-wider font-semibold sticky top-0">
+              <tr>
+                <th class="px-3 py-2 border-b border-slate-800">Name</th>
+                <th class="px-3 py-2 border-b border-slate-800 w-full">Value</th>
+              </tr>
+            </thead>
+            <tbody class="font-mono text-xs divide-y divide-slate-800/50">
+              <tr *ngFor="let v of debugVars" class="hover:bg-slate-900/50">
+                <td class="px-3 py-2 text-sky-400 font-medium">{{v.name}}</td>
+                <td class="px-3 py-2 text-slate-300 break-all">{{v.value}}</td>
+              </tr>
+              <tr *ngIf="debugVars.length === 0">
+                <td colspan="2" class="px-3 py-8 text-center text-slate-600 italic">No local variables found.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Simple Stack Display at bottom -->
+          <div *ngIf="isPaused && debugStack.length" class="border-t border-slate-800 mt-auto">
+            <div class="px-3 py-1 bg-slate-900 text-[10px] text-slate-500 font-bold uppercase">Call Stack</div>
+            <div class="font-mono text-xs text-slate-400">
+              <div *ngFor="let s of debugStack; let i = index"
+                class="px-3 py-1 border-b border-slate-800/30 flex justify-between items-center"
+                [class.bg-sky-500/10]="i === 0" [class.text-sky-300]="i === 0">
+                <span>{{s}}</span>
+                <span *ngIf="i===0" class="text-[9px] text-sky-500 uppercase font-bold tracking-wider">Current</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </section>
 
     </div>

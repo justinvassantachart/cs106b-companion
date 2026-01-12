@@ -129,7 +129,6 @@ export class App {
           this.ngZone.run(() => {
             this.isPaused = true;
             if (this.editor) this.editor.setExecutionLine(data.line);
-            this.editor?.editor?.revealLineInCenter(data.line);
             this.cdr.detectChanges();
           });
         }

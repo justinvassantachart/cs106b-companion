@@ -1,81 +1,83 @@
 export function instrumentCode(code: string): string {
-    // Simple instrumentation: Insert DEBUG_STEP(__LINE__) after semi-colons in main
-    // This is a heuristic and won't be perfect for complex C++, but good for student code.
-
     const lines = code.split('\n');
     let instrumentedFn = "";
-    let inMain = false;
 
-    // Stack of active block scopes to handle simple nesting
-    let braceCount = 0;
+    // Track if we are inside a function body
+    let currentFunction: string | null = null;
+    let braceLevel = 0;
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // --- 1. Detect Main ---
-        if (line.includes('int main(')) {
-            inMain = true;
+        // --- 1. Detect Function Start ---
+        // Only look for function start if we are at top level (braceLevel 0)
+        // Regex: ReturnType Name(Args) {
+        // Exclude kqdws: if, while, for, switch, catch
+        const funcStartRegex = /^\s*(?:[\w<>:&*]+)\s+([\w]+)\s*\([^)]*\)\s*\{/;
+        const match = line.match(funcStartRegex);
+
+        const keywords = ['if', 'while', 'for', 'switch', 'catch', 'else'];
+
+        let isFuncStart = false;
+
+        if (braceLevel === 0 && match && !keywords.includes(match[1])) {
+            const funcName = match[1];
+            currentFunction = funcName;
+            isFuncStart = true;
             instrumentedFn += line + '\n';
-            instrumentedFn += `    DBG_FUNC(main);\n`;
-            instrumentedFn += `    DEBUG_STEP(${i + 2});\n`;
-            braceCount = 1; // Assuming main() { is on this line or next. Simplified.
-            continue;
+            instrumentedFn += `    DBG_FUNC(${funcName});\n`;
+            instrumentedFn += `    DEBUG_STEP(${i + 2});\n`; // Step at start of function
         }
 
-        // Simplified Brace Counting (very rough)
-        braceCount += (line.match(/{/g) || []).length;
-        braceCount -= (line.match(/}/g) || []).length;
+        // Track braces
+        // We do this AFTER processing function start line output to avoid messing up the injection order?
+        // Actually, if we just output the line above, we are good.
+        // Check braces in the current line
+        const openBraces = (line.match(/{/g) || []).length;
+        const closeBraces = (line.match(/}/g) || []).length;
 
-        if (inMain) {
-            // --- 2. Instrument variable declarations ---
-            // Pattern: Type varName = content; OR Type varName;
-            // Types: int, double, string, bool, Vector<...>, Grid<...>, etc.
-            // We ignore comments //
-            // We ignore strings "..." (too hard for regex, assuming simple code)
+        braceLevel += openBraces;
+        braceLevel -= closeBraces;
+
+        if (braceLevel === 0 && currentFunction) {
+            // We just exited the function
+            currentFunction = null;
+        }
+
+        if (isFuncStart) {
+            continue; // Already handled
+        }
+
+        if (currentFunction) {
+            // --- 2. Instrument variable declarations & Steps in function Body ---
 
             let newline = line;
 
-            // Regex explanation:
-            // ^\s* : Start with whitespace
-            // (?:[a-zA-Z0-9_<>:]+)\s+ : Type (simplified, allows Templates <>) and space
-            // (?:[*&]\s*)? : Optional pointers/refs
-            // ([a-zA-Z0-9_]+) : Variable Name (Group 1)
-            // \s*(?:=.*|;)\s* : Assignment or semicolon
-            // (?:$|//) : End of line or comment start
-
             const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z0-9_<>:]+)\s+(?:[*&]\s*)?([a-zA-Z0-9_]+)\s*(?:=|;)/;
-            const match = line.match(varDeclRegex);
+            const varMatch = line.match(varDeclRegex);
 
-            // Avoid keywords
-            const keywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl'];
+            // Avoid keywords for vars
+            const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case'];
 
-            if (match && !keywords.includes(match[1])) {
-                const varName = match[1];
-                // Inject tracker after the semi-colon
-                // We use replace to insert specifically after the semi-colon to handle trailing comments correctly
+            if (varMatch && !varKeywords.includes(varMatch[1])) {
+                const varName = varMatch[1];
                 if (line.includes(';')) {
-                    // CAUTION: This might mess up for loops: for(int i=0; i<10; i++)
-                    // We should check if we are in a 'for' statement parentheses. 
-                    // Simple heuristic: if line starts with 'for', skip.
                     if (!line.trim().startsWith('for') && !line.trim().startsWith('while')) {
                         const parts = line.split(';');
-                        // Reconstruct line with tracking
-                        // Only the first semicolon (simple decl)
-                        // int x = 5; // comment -> int x = 5; DBG_TRACK(x, x); DEBUG_STEP... // comment
-
                         const beforeSemi = parts[0];
-                        const afterSemi = parts.slice(1).join(';'); // rest
-
+                        const afterSemi = parts.slice(1).join(';');
+                        // Preserve whitespace?
                         newline = `${beforeSemi}; DBG_TRACK(${varName}, ${varName}); DEBUG_STEP(${i + 1}); ${afterSemi}`;
                     } else {
-                        // Still instrument steps for loops but don't track loop vars yet (too complex scope)
                         newline = line.replace(/;(\s*)(\/\/.*)?$/, `; DEBUG_STEP(${i + 1});$1$2`);
                     }
                 }
             } else {
-                // improved STEP injection: avoid injecting into "for (;;)"
-                if (!line.trim().startsWith('for')) {
-                    newline = line.replace(/;(\s*)(\/\/.*)?$/, `; DEBUG_STEP(${i + 1});$1$2`);
+                if (!line.trim().startsWith('for') && line.trim().length > 0 && !line.trim().startsWith('//')) {
+                    // Only instrument lines with semicolons (statements)
+                    if (line.includes(';')) {
+                        newline = line.replace(/;(\s*)(\/\/.*)?$/, `; DEBUG_STEP(${i + 1});$1$2`);
+                    }
                 }
             }
 

@@ -45,8 +45,18 @@
         <div class="h-6 w-px bg-slate-700 mx-2"></div>
 
         <button (click)="step()" [disabled]="!isPaused"
-          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30">
+          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Step">
           <lucide-icon [img]="icons.StepForward" class="w-4 h-4"></lucide-icon>
+        </button>
+
+        <button (click)="runAll()" [disabled]="!isDebugging"
+          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Continue">
+          <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
+        </button>
+
+        <button (click)="pause()" [disabled]="!isDebugging || isPaused"
+          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Pause">
+          <lucide-icon [img]="icons.Pause" class="w-4 h-4"></lucide-icon>
         </button>
 
         <button (click)="stop()" [disabled]="!isDebugging"

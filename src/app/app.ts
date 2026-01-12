@@ -1,7 +1,7 @@
 import { Component, NgZone, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle } from 'lucide-angular';
+import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause } from 'lucide-angular';
 import { Assignment, ASSIGNMENTS } from './assignments';
 import { instrumentCode } from './debugger-utils';
 
@@ -28,7 +28,7 @@ export class App {
 
   // Icon imports for template
   readonly icons = {
-    Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle
+    Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause
   };
 
   constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) { }
@@ -74,7 +74,8 @@ export class App {
         } else if (data.type === 'debug-paused') {
           this.ngZone.run(() => {
             this.isPaused = true;
-            // Optional: Scroll to line data.line
+            this.outputLogs += `\n[Debugger] Paused at line ${data.line}\n`;
+            this.cdr.detectChanges();
           });
         }
       };
@@ -119,6 +120,11 @@ export class App {
     this.isPaused = false;
     Atomics.store(this.sharedBuffer, 0, 2); // 2 = RUN
     Atomics.notify(this.sharedBuffer, 0);
+  }
+
+  pause() {
+    if (!this.sharedBuffer) return;
+    Atomics.store(this.sharedBuffer, 0, 0); // 0 = PAUSED
   }
 
   stop() {

@@ -1,31 +1,133 @@
-<div class="container">
-  <header>
-    <h1>Stanford C++ IDE</h1>
-    <p>Local compiler with Vector, Grid, Map, Stack, Queue support.</p>
-  </header>
+<div class="flex h-screen bg-slate-900 text-slate-300 font-sans selection:bg-sky-500/30">
 
-  <div class="toolbar">
-    <button *ngIf="!isDebugging" (click)="startDebugger()" class="btn-start">Start Debugger</button>
-
-    <div *ngIf="isDebugging" class="debug-controls">
-      <button (click)="step()" class="btn-step">Step ⤵</button>
-      <button (click)="runAll()" class="btn-run">Run to End ▶</button>
-      <button (click)="stop()" class="btn-stop">Stop ■</button>
-      <span class="status">Debugger Active</span>
-    </div>
-  </div>
-
-  <div class="editor-layout">
-    <div class="panel">
-      <h3>Source Code</h3>
-      <textarea [(ngModel)]="studentCode" spellcheck="false" [disabled]="isDebugging"></textarea>
+  <!-- Sidebar -->
+  <aside class="w-72 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
+    <div class="p-4 border-b border-slate-800 flex items-center gap-2">
+      <lucide-icon [img]="icons.Terminal" class="text-sky-500 w-6 h-6"></lucide-icon>
+      <h1 class="font-bold text-lg text-slate-100 tracking-tight">Stanford IDE</h1>
     </div>
 
-    <div class="panel">
-      <h3>Console Output</h3>
-      <div class="terminal">
-        <pre>{{ outputLogs }}</pre>
+    <div class="flex-1 overflow-y-auto py-2">
+      <div class="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Assignments</div>
+
+      <button *ngFor="let assignment of assignments" (click)="selectAssignment(assignment)"
+        class="w-full text-left px-4 py-3 border-l-2 transition-all hover:bg-slate-900 group"
+        [class.border-sky-500]="selectedAssignment === assignment"
+        [class.bg-slate-900]="selectedAssignment === assignment"
+        [class.text-sky-400]="selectedAssignment === assignment"
+        [class.border-transparent]="selectedAssignment !== assignment">
+        <div class="font-medium text-sm group-hover:text-slate-200"
+          [class.text-slate-400]="selectedAssignment !== assignment">
+          {{ assignment.title }}
+        </div>
+        <div class="text-xs text-slate-600 mt-1 line-clamp-2">{{ assignment.description }}</div>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex flex-col min-w-0 bg-slate-900">
+
+    <!-- Toolbar -->
+    <header class="h-14 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0">
+      <div class="flex items-center gap-2">
+        <lucide-icon [icon]="icons.FileCode" class="w-4 h-4 text-slate-500"></lucide-icon>
+        <span class="text-sm font-medium text-slate-200">{{ selectedAssignment.title }}.cpp</span>
       </div>
+
+      <div class="flex items-center gap-2">
+        <button (click)="startDebugger()" [disabled]="isDebugging"
+          class="flex items-center gap-2 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          <lucide-icon [icon]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
+          Run
+        </button>
+
+        <div class="h-6 w-px bg-slate-700 mx-2"></div>
+
+        <button (click)="step()" disabled
+          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30">
+          <lucide-icon [icon]="icons.StepForward" class="w-4 h-4"></lucide-icon>
+        </button>
+
+        <button (click)="stop()" [disabled]="!isDebugging"
+          class="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded disabled:opacity-30">
+          <lucide-icon [icon]="icons.Square" class="w-4 h-4 fill-current"></lucide-icon>
+        </button>
+      </div>
+    </header>
+
+    <!-- Content Grid -->
+    <div class="flex-1 flex flex-col lg:flex-row min-h-0">
+
+      <!-- Editor Pane -->
+      <section class="flex-1 flex flex-col min-h-0 border-b lg:border-b-0 lg:border-r border-slate-800 relative group">
+        <textarea [(ngModel)]="studentCode"
+          class="flex-1 w-full h-full bg-slate-900 text-slate-300 p-4 font-mono text-sm resize-none focus:outline-none leading-relaxed selection:bg-sky-500/20"
+          spellcheck="false"></textarea>
+      </section>
+
+      <!-- Console Pane -->
+      <section
+        class="h-64 lg:h-auto lg:w-96 flex flex-col shrink-0 bg-slate-950 border-t lg:border-t-0 lg:border-l border-slate-800">
+        <div class="px-4 border-b border-slate-800 flex items-center gap-6 bg-slate-950">
+          <button
+            class="py-3 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none"
+            [class.border-sky-500]="activeTab === 'console'" [class.text-sky-400]="activeTab === 'console'"
+            [class.text-slate-500]="activeTab !== 'console'" [class.border-transparent]="activeTab !== 'console'"
+            (click)="activeTab = 'console'">Console Output</button>
+
+          <button
+            class="py-3 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none flex items-center gap-2"
+            [class.border-sky-500]="activeTab === 'tests'" [class.text-sky-400]="activeTab === 'tests'"
+            [class.text-slate-500]="activeTab !== 'tests'" [class.border-transparent]="activeTab !== 'tests'"
+            (click)="activeTab = 'tests'">
+            Test Results
+            <span *ngIf="testResults.length"
+              class="ml-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-sky-400 font-mono">{{testResults.length}}</span>
+          </button>
+        </div>
+
+        <!-- Console Tab -->
+        <div class="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed custom-scrollbar"
+          *ngIf="activeTab === 'console'">
+          <pre *ngIf="outputLogs" class="text-slate-300 whitespace-pre-wrap break-words">{{ outputLogs }}</pre>
+          <div *ngIf="!outputLogs" class="text-slate-700 italic select-none">Ready to run... <br>Select an assignment
+            and click Run.</div>
+
+          <div *ngIf="isDebugging" class="mt-2 flex gap-1 items-center text-slate-500">
+            <span class="w-1.5 h-3 bg-sky-500 animate-pulse"></span>
+            <span class="text-[10px]">Running...</span>
+          </div>
+        </div>
+
+        <!-- Tests Tab -->
+        <div class="flex-1 overflow-auto p-4 custom-scrollbar" *ngIf="activeTab === 'tests'">
+          <div *ngFor="let result of testResults" class="mb-2 p-3 rounded bg-slate-900 border transition-all"
+            [class.border-green-500/30]="result.pass" [class.bg-green-500/5]="result.pass"
+            [class.border-red-500/30]="!result.pass" [class.bg-red-500/5]="!result.pass">
+            <div class="flex items-start gap-3">
+              <lucide-icon [img]="result.pass ? icons.CheckCircle : icons.XCircle" [class.text-green-500]="result.pass"
+                [class.text-red-500]="!result.pass" class="w-5 h-5 mt-0.5 shrink-0"></lucide-icon>
+              <div class="min-w-0 flex-1">
+                <div class="font-medium text-sm text-slate-200 font-mono break-all">{{ result.expression }}</div>
+                <div *ngIf="!result.pass"
+                  class="text-xs text-red-400 mt-2 font-mono bg-red-950/30 p-2 rounded border border-red-500/10">
+                  <div class="flex gap-2"><span class="opacity-50 w-16 px-1">Expected:</span> <span
+                      class="text-red-300">{{ result.expected }}</span></div>
+                  <div class="flex gap-2"><span class="opacity-50 w-16 px-1">Actual:</span> <span
+                      class="text-red-300">{{ result.actual }}</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div *ngIf="testResults.length === 0"
+            class="flex flex-col items-center justify-center h-full text-slate-600 gap-2">
+            <lucide-icon [img]="icons.FileCode" class="w-8 h-8 opacity-20"></lucide-icon>
+            <div class="text-sm italic">No tests run yet.</div>
+          </div>
+        </div>
+      </section>
+
     </div>
-  </div>
+  </main>
 </div>

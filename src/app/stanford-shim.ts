@@ -286,4 +286,18 @@ struct GridLocation {
 };
 bool operator==(const GridLocation& a, const GridLocation& b) { return a.row == b.row && a.col == b.col; }
 ostream& operator<<(ostream& os, const GridLocation& g) { os << g.toString(); return os; }
+
+// --------------------------------------------------------
+// TESTING
+// --------------------------------------------------------
+#define EXPECT_EQUALS(actual, expected) { \\
+    auto a = (actual); \\
+    auto e = (expected); \\
+    if (a == e) { \\
+        cout << "[TEST:PASS] " << #actual << " == " << #expected << endl; \\
+    } else { \\
+        cout << "[TEST:FAIL] " << #actual << " == " << #expected \\
+             << " Expected: " << e << " Actual: " << a << endl; \\
+    } \\
+}
 `;

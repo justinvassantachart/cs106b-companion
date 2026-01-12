@@ -70,10 +70,14 @@
     <div class="flex-1 flex flex-col lg:flex-row min-h-0">
 
       <!-- Editor Pane -->
-      <section class="flex-1 flex flex-col min-h-0 border-b lg:border-b-0 lg:border-r border-slate-800 relative group">
-        <textarea [(ngModel)]="studentCode"
-          class="flex-1 w-full h-full bg-slate-900 text-slate-300 p-4 font-mono text-sm resize-none focus:outline-none leading-relaxed selection:bg-sky-500/20"
-          spellcheck="false"></textarea>
+      <section class="flex-1 flex flex-col min-h-0 border-b lg:border-b-0 lg:border-r border-slate-800 relative group overflow-hidden">
+        <app-monaco-editor
+          [code]="studentCode"
+          (codeChange)="handleCodeChange($event)"
+          [breakpoints]="breakpoints"
+          (breakpointToggle)="toggleBreakpoint($event)"
+          class="flex-1 w-full h-full block">
+        </app-monaco-editor>
       </section>
 
       <!-- Console Pane -->

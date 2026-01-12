@@ -1,18 +1,21 @@
-import { Component, NgZone, ChangeDetectorRef } from '@angular/core';
+import { Component, NgZone, ChangeDetectorRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause } from 'lucide-angular';
 import { Assignment, ASSIGNMENTS } from './assignments';
 import { instrumentCode } from './debugger-utils';
+import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, MonacoEditorComponent],
   templateUrl: './app.html',
   styleUrls: ['./app.css']
 })
 export class App {
+  @ViewChild(MonacoEditorComponent) editor!: MonacoEditorComponent;
+
   assignments = ASSIGNMENTS;
   selectedAssignment: Assignment = ASSIGNMENTS[0];
   studentCode: string = this.selectedAssignment.starterCode;
@@ -25,6 +28,10 @@ export class App {
   activeTab: 'console' | 'tests' = 'console';
 
   sharedBuffer: Int32Array | null = null;
+
+  // Debugging state
+  breakpoints: Set<number> = new Set();
+  currentLine: number | null = null;
 
   // Icon imports for template
   readonly icons = {
@@ -39,6 +46,31 @@ export class App {
     this.outputLogs = "";
     this.testResults = [];
     this.activeTab = 'console';
+    this.stop(); // Stop any running debug session
+    this.breakpoints.clear();
+    this.breakpoints = new Set(this.breakpoints); // Force update
+    if (this.editor) this.editor.setExecutionLine(null);
+  }
+
+  handleCodeChange(newCode: string) {
+    this.studentCode = newCode;
+  }
+
+  toggleBreakpoint(line: number) {
+    if (this.breakpoints.has(line)) {
+      this.breakpoints.delete(line);
+    } else {
+      this.breakpoints.add(line);
+    }
+    this.breakpoints = new Set(this.breakpoints); // Trigger change detection/input update
+
+    // Update worker if running
+    if (this.worker) {
+      this.worker.postMessage({
+        command: 'update-breakpoints',
+        breakpoints: Array.from(this.breakpoints)
+      });
+    }
   }
 
   startDebugger() {
@@ -47,6 +79,7 @@ export class App {
     this.isPaused = false;
     this.testResults = [];
     this.activeTab = 'console';
+    if (this.editor) this.editor.setExecutionLine(null);
 
     if (this.worker) this.worker.terminate();
 
@@ -57,6 +90,14 @@ export class App {
       this.sharedBuffer = new Int32Array(new SharedArrayBuffer(4));
       this.sharedBuffer[0] = 0; // 0 = PAUSED, 1 = STEP, 2 = RUN
       this.worker.postMessage({ command: 'configure-debug', buffer: this.sharedBuffer.buffer });
+
+      // Send breakpoints
+      // IMPORTANT: The worker might process this before or after compile? 
+      // It's safer to send it immediately.
+      this.worker.postMessage({
+        command: 'update-breakpoints',
+        breakpoints: Array.from(this.breakpoints)
+      });
 
       this.worker.onmessage = ({ data }) => {
         if (data.type === 'log') {
@@ -70,11 +111,13 @@ export class App {
             this.outputLogs += "\n[FINISHED]";
             this.isDebugging = false;
             this.isPaused = false;
+            if (this.editor) this.editor.setExecutionLine(null);
           });
         } else if (data.type === 'debug-paused') {
           this.ngZone.run(() => {
             this.isPaused = true;
-            this.outputLogs += `\n[Debugger] Paused at line ${data.line}\n`;
+            // this.outputLogs += `\n[Debugger] Paused at line ${data.line}\n`;
+            if (this.editor) this.editor.setExecutionLine(data.line);
             this.cdr.detectChanges();
           });
         }
@@ -111,6 +154,7 @@ export class App {
   step() {
     if (!this.sharedBuffer) return;
     this.isPaused = false;
+    if (this.editor) this.editor.setExecutionLine(null); // Clear highlight briefly
     Atomics.store(this.sharedBuffer, 0, 1); // 1 = STEP
     Atomics.notify(this.sharedBuffer, 0);
   }
@@ -118,6 +162,7 @@ export class App {
   runAll() {
     if (!this.sharedBuffer) return;
     this.isPaused = false;
+    if (this.editor) this.editor.setExecutionLine(null);
     Atomics.store(this.sharedBuffer, 0, 2); // 2 = RUN
     Atomics.notify(this.sharedBuffer, 0);
   }
@@ -135,5 +180,6 @@ export class App {
     }
     this.isDebugging = false;
     this.isPaused = false;
+    if (this.editor) this.editor.setExecutionLine(null);
   }
 }

@@ -84,8 +84,41 @@ addEventListener('message', async ({ data }) => {
 
       postMessage({ type: 'log', text: '[Worker] Compiling...\n' });
 
+      const input = `test.cc`;
+      const obj = `test.o`;
+      const wasm = `test.wasm`;
       const source = `#include "stanford.h"\n\n${data.code}`;
-      await api.compileLinkRun(source, { clangFlags: [] });
+
+      // 1. Compile (Source -> Object)
+      await api.compile({
+        input,
+        contents: source,
+        obj,
+        clangFlags: ['-std=c++17', '-Wno-deprecated-declarations']
+      });
+
+      // 2. Link (Object -> WASM)
+      // We need to construct the linker command manually to add --allow-undefined
+      const stackSize = 1024 * 1024;
+      const libdir = 'lib/wasm32-wasi';
+      const crt1 = `${libdir}/crt1.o`;
+      const lld = await api.getModule(api.cdnUrl + api.lldFilename);
+
+      await api.run(
+        lld, 'wasm-ld',
+        '--no-threads',
+        '--export-dynamic',
+        '--allow-undefined',
+        '-z', `stack-size=${stackSize}`,
+        `-L${libdir}`, crt1, obj,
+        '-lc', '-lc++', '-lc++abi', '-lcanvas',
+        '-o', wasm
+      );
+
+      // 3. Run (Load WASM and execute)
+      const buffer = api.memfs.getFileContents(wasm);
+      const testMod = await WebAssembly.compile(buffer);
+      await api.run(testMod, wasm);
 
       postMessage({ type: 'finished' });
     } catch (e: any) {

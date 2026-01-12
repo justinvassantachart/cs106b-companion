@@ -1,4 +1,4 @@
-import { Component, NgZone } from '@angular/core';
+import { Component, NgZone, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle } from 'lucide-angular';
@@ -31,7 +31,7 @@ export class App {
     Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle
   };
 
-  constructor(private ngZone: NgZone) { }
+  constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) { }
 
   selectAssignment(assignment: Assignment) {
     this.selectedAssignment = assignment;
@@ -63,6 +63,7 @@ export class App {
           this.ngZone.run(() => {
             this.outputLogs += data.text;
             this.parseTestResult(data.text);
+            this.cdr.detectChanges(); // Force update
           });
         } else if (data.type === 'finished') {
           this.ngZone.run(() => {

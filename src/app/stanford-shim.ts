@@ -1,4 +1,5 @@
 export const STANFORD_SHIM = `
+#pragma once
 #include <iostream>
 #include <vector>
 #include <string>

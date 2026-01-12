@@ -44,6 +44,8 @@ async function bootstrap() {
 
 const originalInstantiate = WebAssembly.instantiate;
 let sharedBuffer: Int32Array | null = null;
+let breakpoints = new Set<number>();
+
 
 // Override allow injecting imports (monkey-patch)
 // @ts-ignore
@@ -54,22 +56,15 @@ WebAssembly.instantiate = (moduleObject: WebAssembly.Module | BufferSource, impo
     importObject['env']._debug_wait = (line: number) => {
       if (!sharedBuffer) return;
 
-      // Check if we are in RUN mode (2)
-      if (Atomics.load(sharedBuffer, 0) === 2) {
-        // Optional: Rate limit updates to avoid UI flooding
-        // postMessage({ type: 'debug-line', line }); 
-        return;
+      const state = Atomics.load(sharedBuffer, 0);
+      const shouldPause = (state === 0) || (state === 1) || breakpoints.has(line);
+
+      if (shouldPause) {
+        // Enforce PAUSED state
+        Atomics.store(sharedBuffer, 0, 0);
+        postMessage({ type: 'debug-paused', line });
+        Atomics.wait(sharedBuffer, 0, 0);
       }
-
-      // Otherwise, we pause.
-      // 1. Reset state to PAUSED (0) - effectively consuming the previous 'step' token
-      Atomics.store(sharedBuffer, 0, 0);
-
-      // 2. Notify main thread we are paused
-      postMessage({ type: 'debug-paused', line });
-
-      // 3. Wait until state becomes != 0
-      Atomics.wait(sharedBuffer, 0, 0);
     };
   }
   return originalInstantiate(moduleObject, importObject);
@@ -78,6 +73,8 @@ WebAssembly.instantiate = (moduleObject: WebAssembly.Module | BufferSource, impo
 addEventListener('message', async ({ data }) => {
   if (data.command === 'configure-debug') {
     sharedBuffer = new Int32Array(data.buffer);
+  } else if (data.command === 'update-breakpoints') {
+    breakpoints = new Set(data.breakpoints);
   } else if (data.command === 'compile') {
     try {
       await bootstrap();

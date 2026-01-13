@@ -52,32 +52,49 @@ export function instrumentCode(code: string): string {
             // --- 2. Instrument variable declarations & Steps in function Body ---
 
             let newline = line;
+            const trimmed = line.trim();
 
-            const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z0-9_<>:]+)\s+(?:[*&]\s*)?([a-zA-Z0-9_]+)\s*(?:=|;)/;
-            const varMatch = line.match(varDeclRegex);
+            if (trimmed.length > 0 && !trimmed.startsWith('//') && trimmed.includes(';')) {
+                // Determine if we should pause BEFORE
 
-            // Avoid keywords for vars
-            const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case'];
+                const stepCode = `DEBUG_STEP(${i + 1}); `;
 
-            if (varMatch && !varKeywords.includes(varMatch[1])) {
-                const varName = varMatch[1];
-                if (line.includes(';')) {
-                    if (!line.trim().startsWith('for') && !line.trim().startsWith('while')) {
-                        const parts = line.split(';');
-                        const beforeSemi = parts[0];
-                        const afterSemi = parts.slice(1).join(';');
-                        // Preserve whitespace?
-                        newline = `${beforeSemi}; DBG_TRACK(${varName}, ${varName}); DEBUG_STEP(${i + 1}); ${afterSemi}`;
+                // Improved Regex for Logic
+                // 1. Prepend Step
+                // 2. Check for Var Decl to Append Track
+
+                // Regex to capture: Type, optional ptr, Name
+                // Allows: "int* p", "int *p", "int p", "Vector<int> v"
+                const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z0-9_<>:]+)\s*(?:[*&]\s*)?([a-zA-Z0-9_]+)\s*(?:=|;)/;
+                const varMatch = line.match(varDeclRegex);
+
+                // Keywords to ignore for variable tracking
+                const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case', 'switch', 'default'];
+
+                if (varMatch && !varKeywords.includes(varMatch[1])) {
+                    // It is a variable declaration!
+                    const varName = varMatch[1];
+                    const trackCode = ` DBG_TRACK(${varName}, ${varName});`;
+
+                    if (!trimmed.startsWith('for')) {
+                        // Standard Declaration: "int x = 5;"
+                        // Result: "DEBUG_STEP(..); int x = 5; DBG_TRACK(x, x);"
+                        // We assume the line ends with semicolon or has one.
+                        // We append trackCode after the FIRST semicolon found (heuristic).
+
+                        newline = stepCode + line.replace(';', ';' + trackCode);
                     } else {
-                        newline = line.replace(/;(\s*)(\/\/.*)?$/, `; DEBUG_STEP(${i + 1});$1$2`);
+                        // For loop with decl: "for (int i = 0; ...)"
+                        // We prepend step (pauses before loop).
+                        // We DO NOT track 'i' yet because it is scoped to loop and tricky to insert DBG_TRACK inside (?)
+                        // Actually, we can't easily insert DBG_TRACK inside specific for-loop parts syntax-wise without parsing.
+                        // So we SKIP tracking for-loop variables for now.
+                        newline = stepCode + line;
                     }
-                }
-            } else {
-                if (!line.trim().startsWith('for') && line.trim().length > 0 && !line.trim().startsWith('//')) {
-                    // Only instrument lines with semicolons (statements)
-                    if (line.includes(';')) {
-                        newline = line.replace(/;(\s*)(\/\/.*)?$/, `; DEBUG_STEP(${i + 1});$1$2`);
-                    }
+                } else {
+                    // Not a declaration, just a statement (expression, return, etc)
+                    // Result: "DEBUG_STEP(..); statement;"
+                    newline = stepCode + line;
                 }
             }
 

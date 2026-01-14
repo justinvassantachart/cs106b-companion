@@ -1,15 +1,26 @@
-import { Component, NgZone, ChangeDetectorRef, ViewChild } from '@angular/core';
+import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause } from 'lucide-angular';
 import { Assignment, ASSIGNMENTS } from './assignments';
 import { instrumentCode } from './debugger-utils';
 import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
+import { VariableVizComponent } from './components/variable-viz/variable-viz.component';
+import { AppSidebar } from './app-sidebar';
+import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, MonacoEditorComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    LucideAngularModule,
+    MonacoEditorComponent,
+    VariableVizComponent,
+    AppSidebar,
+    HlmSidebarImports
+  ],
   templateUrl: './app.html',
   styleUrls: ['./app.css']
 })
@@ -168,7 +179,17 @@ export class App {
   }
 
   // Debug Data Parsing
-  debugVars: { name: string, value: string }[] = [];
+  // Updated model for variables
+  debugVars: {
+    name: string;
+    type: string;
+    addr: string;
+    value: string;
+    targetAddr?: string;
+    frame?: string;
+    derefValue?: string;
+  }[] = [];
+
   debugStack: string[] = [];
 
   private logBuffer = "";
@@ -188,11 +209,13 @@ export class App {
       const trimmed = line.trim();
 
       if (trimmed === '[DEBUG:VARS:START]') {
+        console.log('--- [DEBUG:VARS:START] received ---');
         this.isCapturingVars = true;
         this.capturedVarsLines = [];
         continue;
       }
       if (trimmed === '[DEBUG:VARS:END]') {
+        console.log('--- [DEBUG:VARS:END] received ---');
         this.isCapturingVars = false;
         this.updateDebugVars();
         continue;
@@ -209,7 +232,10 @@ export class App {
       }
 
       if (this.isCapturingVars) {
-        if (trimmed) this.capturedVarsLines.push(trimmed);
+        if (trimmed) {
+          console.log('DEBUG_VAR_LINE_RAW:', trimmed);
+          this.capturedVarsLines.push(trimmed);
+        }
       } else if (this.isCapturingStack) {
         if (trimmed) this.capturedStackLines.push(trimmed);
       } else {
@@ -221,15 +247,27 @@ export class App {
   }
 
   private updateDebugVars() {
+    console.log(`Updating Debug Vars. Lines captured: ${this.capturedVarsLines.length}`);
     this.debugVars = this.capturedVarsLines.map(line => {
-      // format: name|value OR name|complex|value etc.
-      // We split by first pipe
-      const pipeIdx = line.indexOf('|');
-      if (pipeIdx === -1) return { name: line, value: '??' };
+      // Format: name|type|addr|value|targetAddr|frame|derefValue
+      const parts = line.split('|');
+      console.log('PARSED_VAR_DEBUG:', parts);
+      if (parts.length < 4) {
+        // Fallback for old format or errors
+        return { name: parts[0] || '?', type: 'unknown', addr: '0', value: parts[1] || '??' };
+      }
 
-      const name = line.substring(0, pipeIdx);
-      const value = line.substring(pipeIdx + 1);
-      return { name, value };
+      const v = {
+        name: parts[0],
+        type: parts[1],
+        addr: parts[2],
+        value: parts[3],
+        targetAddr: parts[4] !== '0' ? parts[4] : undefined,
+        frame: parts[5] || 'global',
+        derefValue: parts[6] || undefined // The content of the pointed-to object
+      };
+      if (v.derefValue) console.log(`Got derefValue for ${v.name}:`, v.derefValue);
+      return v;
     });
   }
 

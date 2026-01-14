@@ -310,10 +310,16 @@ struct VarInfo {
     string value;
 };
 // Abstract base for polymorphism
+// Abstract base for polymorphism
+// Abstract base for polymorphism
 struct TracerBase {
     string name;
     string type;
+    string frame; // Scope
     virtual string getValue() const = 0;
+    virtual string getAddr() const = 0;
+    virtual string getTargetAddr() const = 0; // For pointers
+    virtual string getDerefValue() const = 0; // For pointer targets content
     virtual ~TracerBase() {}
 };
 
@@ -328,13 +334,13 @@ struct Tracer : TracerBase {
     Tracer(string n, const T& r) : ref(r) { 
         name = n; 
         type = "unknown"; // simplified
+        frame = _call_stack.empty() ? "global" : _call_stack.back();
         _active_vars.push_back(this);
     }
     ~Tracer() {
         if (!_active_vars.empty() && _active_vars.back() == this) {
             _active_vars.pop_back();
         } else {
-             // Fallback for non-LIFO destruction (shouldn't happen in strict scope)
              auto it = std::find(_active_vars.rbegin(), _active_vars.rend(), this);
              if (it != _active_vars.rend()) {
                  _active_vars.erase(std::next(it).base());
@@ -343,7 +349,6 @@ struct Tracer : TracerBase {
     }
     string getValue() const override {
         stringstream ss;
-        // Handle boolean specially for nicer output
         if constexpr (std::is_same_v<T, bool>) {
             ss << (ref ? "true" : "false");
         } else {
@@ -351,22 +356,33 @@ struct Tracer : TracerBase {
         }
         return ss.str();
     }
+    string getAddr() const override {
+        stringstream ss;
+        ss << (void*)&ref; // Cast to void* to ensure address printing
+        return ss.str();
+    }
+    string getTargetAddr() const override {
+        return "0"; // Not a pointer
+    }
+    string getDerefValue() const override {
+        return ""; // Not a pointer
+    }
 };
 
-// Pointer specialization to print address and maybe value?
+// Pointer specialization
 template <typename T>
 struct Tracer<T*> : TracerBase {
     T* const& ref;
     Tracer(string n, T* const& r) : ref(r) {
         name = n;
         type = "ptr";
+        frame = _call_stack.empty() ? "global" : _call_stack.back();
         _active_vars.push_back(this);
     }
     ~Tracer() {
          if (!_active_vars.empty() && _active_vars.back() == this) {
             _active_vars.pop_back();
         } else {
-             // Fallback
              auto it = std::find(_active_vars.rbegin(), _active_vars.rend(), this);
              if (it != _active_vars.rend()) {
                  _active_vars.erase(std::next(it).base());
@@ -376,10 +392,26 @@ struct Tracer<T*> : TracerBase {
     string getValue() const override {
         if (ref == nullptr) return "nullptr";
         stringstream ss;
-        // Print address
+        // Print address it holds
         ss << ref;
-        // Print dereferenced value
-        ss << " -> " << *ref;
+        return ss.str();
+    }
+    string getAddr() const override {
+        stringstream ss;
+        ss << (void*)&ref; // Address of the pointer variable itself
+        return ss.str();
+    }
+    string getTargetAddr() const override {
+        if (ref == nullptr) return "0";
+        stringstream ss;
+        ss << (void*)ref; // Address is points to
+        return ss.str();
+    }
+    string getDerefValue() const override {
+        if (ref == nullptr) return "null";
+        stringstream ss;
+        // Force use of operator<< from global scope if available
+        ss << (*ref); 
         return ss.str();
     }
 };
@@ -396,13 +428,18 @@ struct FuncTracker {
 extern "C" {
     void _debug_wait(int line);
     // Export simple function to dump vars
-    // We can't return complex strings easily across WASM boundary without malloc helpers
-    // So we'll print a special formatted string to stdout that the worker intercepts
     void _debug_dump_vars() {
         cout << "[DEBUG:VARS:START]" << endl;
         // Reverse iterate to show top of stack first
         for (auto it = _active_vars.rbegin(); it != _active_vars.rend(); ++it) {
-            cout << (*it)->name << "|" << (*it)->getValue() << endl;
+            // Format: name|type|addr|value|targetAddr|frame|derefValue
+            cout << (*it)->name << "|" 
+                 << (*it)->type << "|"
+                 << (*it)->getAddr() << "|"
+                 << (*it)->getValue() << "|"
+                 << (*it)->getTargetAddr() << "|"
+                 << (*it)->frame << "|"
+                 << (*it)->getDerefValue() << endl;
         }
         cout << "[DEBUG:VARS:END]" << endl;
         

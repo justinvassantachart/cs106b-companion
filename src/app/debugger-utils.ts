@@ -27,6 +27,23 @@ export function instrumentCode(code: string): string {
             instrumentedFn += line + '\n';
             instrumentedFn += `    DBG_FUNC(${funcName});\n`;
             instrumentedFn += `    DEBUG_STEP(${i + 2});\n`; // Step at start of function
+
+            // --- Instrument Parameters ---
+            // Extract content between ( and )
+            const argsContent = line.substring(line.indexOf('(') + 1, line.lastIndexOf(')'));
+            if (argsContent.trim()) {
+                const args = argsContent.split(',');
+                for (const arg of args) {
+                    const cleanArg = arg.trim();
+                    // Regex calls for parsing "Type varName" or "Type* varName" or "Type& varName"
+                    // We reuse logic similar to varDecl but simpler as we know it's an arg
+                    const argMatch = cleanArg.match(/(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*$/);
+                    if (argMatch) {
+                        const argName = argMatch[1];
+                        instrumentedFn += `    DBG_TRACK(${argName}, ${argName});\n`;
+                    }
+                }
+            }
         }
 
         // Track braces
@@ -65,13 +82,18 @@ export function instrumentCode(code: string): string {
 
                 // Regex to capture: Type, optional ptr, Name
                 // Allows: "int* p", "int *p", "int p", "Vector<int> v"
-                const varDeclRegex = /^\s*(?:const\s+)?(?:.+?)\s+(?:[*&]\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
+                // Must start with valid type char (letter/_) to avoid matching "*p = 20" as "Type=* Name=p"
+                const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z_:][\w:<>\s*&]*?)\s+(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
                 const varMatch = line.match(varDeclRegex);
 
                 // Keywords to ignore for variable tracking
-                const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case', 'switch', 'default'];
+                // We also check start of line for typedef/using/template/delete/throw to be safe
+                const lineStart = trimmed.split(' ')[0];
+                const ignoreStarts = ['typedef', 'using', 'template', 'return', 'co_return', 'co_yield', 'delete', 'throw'];
 
-                if (varMatch && !varKeywords.includes(varMatch[1])) {
+                const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case', 'switch', 'default', 'true', 'false', 'nullptr'];
+
+                if (varMatch && !varKeywords.includes(varMatch[1]) && !ignoreStarts.includes(lineStart)) {
                     // It is a variable declaration!
                     const varName = varMatch[1];
                     const trackCode = ` DBG_TRACK(${varName}, ${varName});`;

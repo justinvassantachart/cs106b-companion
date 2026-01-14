@@ -1,131 +1,116 @@
-<div class="flex h-screen bg-slate-900 text-slate-300 font-sans selection:bg-sky-500/30">
+<app-sidebar [assignments]="assignments" [selectedAssignment]="selectedAssignment"
+  (selectAssignment)="selectAssignment($event)">
 
-  <!-- Sidebar -->
-  <aside class="w-72 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
-    <div class="p-4 border-b border-slate-800 flex items-center gap-2">
-      <lucide-icon [img]="icons.Terminal" class="text-sky-500 w-6 h-6"></lucide-icon>
-      <h1 class="font-bold text-lg text-slate-100 tracking-tight">Stanford IDE</h1>
-    </div>
+  <!-- Main Layout: Vertical Split -->
+  <div
+    class="flex flex-col h-full w-full bg-slate-900 text-slate-300 font-sans selection:bg-sky-500/30 overflow-hidden">
 
-    <div class="flex-1 overflow-y-auto py-2">
-      <div class="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Assignments</div>
+    <!-- TOP PANEL: Toolbar + Editor (Flex 1) -->
+    <div class="flex-1 flex flex-col min-h-0 border-b border-slate-800">
 
-      <button *ngFor="let assignment of assignments" (click)="selectAssignment(assignment)"
-        class="w-full text-left px-4 py-3 border-l-2 transition-all hover:bg-slate-900 group"
-        [class.border-sky-500]="selectedAssignment === assignment"
-        [class.bg-slate-900]="selectedAssignment === assignment"
-        [class.text-sky-400]="selectedAssignment === assignment"
-        [class.border-transparent]="selectedAssignment !== assignment">
-        <div class="font-medium text-sm group-hover:text-slate-200"
-          [class.text-slate-400]="selectedAssignment !== assignment">
-          {{ assignment.title }}
+      <!-- Toolbar -->
+      <header class="h-12 border-b border-slate-800 bg-slate-900 flex items-center justify-between px-4 shrink-0">
+        <div class="flex items-center gap-4">
+          <button hlmSidebarTrigger class="text-slate-500 hover:text-slate-300">
+            <lucide-icon [img]="icons.Terminal" class="w-5 h-5"></lucide-icon>
+          </button>
+          <div class="flex items-center gap-2">
+            <lucide-icon [img]="icons.FileCode" class="w-4 h-4 text-slate-500"></lucide-icon>
+            <span class="text-sm font-medium text-slate-200">{{ selectedAssignment.title }}.cpp</span>
+          </div>
         </div>
-        <div class="text-xs text-slate-600 mt-1 line-clamp-2">{{ assignment.description }}</div>
-      </button>
-    </div>
-  </aside>
 
-  <!-- Main Content -->
-  <main class="flex-1 flex flex-col min-w-0 bg-slate-900">
+        <div class="flex items-center gap-2">
+          <button (click)="startDebugger()" [disabled]="isDebugging"
+            class="flex items-center gap-2 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <lucide-icon [img]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
+            Run
+          </button>
 
-    <!-- Toolbar -->
-    <header class="h-14 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0">
-      <div class="flex items-center gap-2">
-        <lucide-icon [img]="icons.FileCode" class="w-4 h-4 text-slate-500"></lucide-icon>
-        <span class="text-sm font-medium text-slate-200">{{ selectedAssignment.title }}.cpp</span>
-      </div>
+          <div class="h-6 w-px bg-slate-700 mx-2"></div>
 
-      <div class="flex items-center gap-2">
-        <button (click)="startDebugger()" [disabled]="isDebugging"
-          class="flex items-center gap-2 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-          <lucide-icon [img]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
-          Run
-        </button>
+          <button (click)="step()" [disabled]="!isPaused"
+            class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Step">
+            <lucide-icon [img]="icons.StepForward" class="w-4 h-4"></lucide-icon>
+          </button>
 
-        <div class="h-6 w-px bg-slate-700 mx-2"></div>
+          <button (click)="runAll()" [disabled]="!isDebugging"
+            class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30"
+            title="Continue">
+            <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
+          </button>
 
-        <button (click)="step()" [disabled]="!isPaused"
-          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Step">
-          <lucide-icon [img]="icons.StepForward" class="w-4 h-4"></lucide-icon>
-        </button>
+          <button (click)="pause()" [disabled]="!isDebugging || isPaused"
+            class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Pause">
+            <lucide-icon [img]="icons.Pause" class="w-4 h-4"></lucide-icon>
+          </button>
 
-        <button (click)="runAll()" [disabled]="!isDebugging"
-          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Continue">
-          <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
-        </button>
+          <button (click)="stop()" [disabled]="!isDebugging"
+            class="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded disabled:opacity-30">
+            <lucide-icon [img]="icons.Square" class="w-4 h-4 fill-current"></lucide-icon>
+          </button>
+        </div>
+      </header>
 
-        <button (click)="pause()" [disabled]="!isDebugging || isPaused"
-          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Pause">
-          <lucide-icon [img]="icons.Pause" class="w-4 h-4"></lucide-icon>
-        </button>
-
-        <button (click)="stop()" [disabled]="!isDebugging"
-          class="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded disabled:opacity-30">
-          <lucide-icon [img]="icons.Square" class="w-4 h-4 fill-current"></lucide-icon>
-        </button>
-      </div>
-    </header>
-
-    <!-- Content Grid -->
-    <div class="flex-1 flex flex-col lg:flex-row min-h-0">
-
-      <!-- Editor Pane -->
-      <section
-        class="flex-1 flex flex-col min-h-0 border-b lg:border-b-0 lg:border-r border-slate-800 relative group overflow-hidden">
+      <!-- Editor Area -->
+      <div class="flex-1 relative overflow-hidden">
         <app-monaco-editor [code]="studentCode" (codeChange)="handleCodeChange($event)" [breakpoints]="breakpoints"
-          (breakpointToggle)="toggleBreakpoint($event)" class="flex-1 w-full h-full block">
+          (breakpointToggle)="toggleBreakpoint($event)" class="w-full h-full block">
         </app-monaco-editor>
-      </section>
+      </div>
+    </div>
 
-      <!-- Console Pane -->
-      <section
-        class="h-64 lg:h-auto lg:w-96 flex flex-col shrink-0 bg-slate-950 border-t lg:border-t-0 lg:border-l border-slate-800">
-        <div class="px-4 border-b border-slate-800 flex items-center gap-6 bg-slate-950">
-          <button
-            class="py-3 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none"
-            [class.border-sky-500]="activeTab === 'console'" [class.text-sky-400]="activeTab === 'console'"
-            [class.text-slate-500]="activeTab !== 'console'" [class.border-transparent]="activeTab !== 'console'"
-            (click)="activeTab = 'console'">Console Output</button>
+    <!-- BOTTOM PANEL: Debugger Tools (Height 45vh) -->
+    <div
+      class="h-[45vh] flex flex-col bg-slate-950 border-t-4 border-slate-900 shadow-[0_-4px_12px_rgba(0,0,0,0.3)] z-10">
 
-          <button
-            class="py-3 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none flex items-center gap-2"
-            [class.border-sky-500]="activeTab === 'tests'" [class.text-sky-400]="activeTab === 'tests'"
-            [class.text-slate-500]="activeTab !== 'tests'" [class.border-transparent]="activeTab !== 'tests'"
-            (click)="activeTab = 'tests'">
-            Test Results
-            <div *ngIf="testResults.length"
-              class="ml-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-sky-400 font-mono">
-              {{testResults.length}}</div>
-          </button>
+      <!-- Tabs Header -->
+      <div class="flex items-center border-b border-slate-800 px-4 bg-slate-950">
+        <button
+          class="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none"
+          [class.border-sky-500]="activeTab === 'console'" [class.text-sky-400]="activeTab === 'console'"
+          [class.text-slate-500]="activeTab !== 'console'" [class.border-transparent]="activeTab !== 'console'"
+          (click)="activeTab = 'console'">Console Output</button>
 
-          <button *ngIf="isDebugging"
-            class="py-3 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none flex items-center gap-2"
-            [class.border-sky-500]="activeTab === 'variables'" [class.text-sky-400]="activeTab === 'variables'"
-            [class.text-slate-500]="activeTab !== 'variables'" [class.border-transparent]="activeTab !== 'variables'"
-            (click)="activeTab = 'variables'">
-            Variables
-          </button>
-        </div>
+        <button
+          class="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none flex items-center gap-2"
+          [class.border-sky-500]="activeTab === 'tests'" [class.text-sky-400]="activeTab === 'tests'"
+          [class.text-slate-500]="activeTab !== 'tests'" [class.border-transparent]="activeTab !== 'tests'"
+          (click)="activeTab = 'tests'">
+          Test Results
+          <div *ngIf="testResults.length"
+            class="ml-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-sky-400 font-mono">
+            {{testResults.length}}</div>
+        </button>
 
-        <!-- Console Tab -->
-        <div class="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed custom-scrollbar"
+        <button *ngIf="isDebugging"
+          class="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none flex items-center gap-2"
+          [class.border-sky-500]="activeTab === 'variables'" [class.text-sky-400]="activeTab === 'variables'"
+          [class.text-slate-500]="activeTab !== 'variables'" [class.border-transparent]="activeTab !== 'variables'"
+          (click)="activeTab = 'variables'">
+          Variables & Memory
+        </button>
+      </div>
+
+      <!-- Tab Content Areas -->
+      <div class="flex-1 min-h-0 overflow-hidden relative">
+
+        <!-- Console -->
+        <div class="w-full h-full overflow-auto p-4 font-mono text-xs leading-relaxed custom-scrollbar"
           *ngIf="activeTab === 'console'">
           <pre *ngIf="outputLogs" class="text-slate-300 whitespace-pre-wrap break-words">{{ outputLogs }}</pre>
-          <div *ngIf="!outputLogs" class="text-slate-700 italic select-none">Ready to run... <br>Select an assignment
-            and click Run.</div>
-
-          <div *ngIf="isDebugging && !isPaused" class="mt-2 flex gap-1 items-center text-slate-500">
-            <span class="w-1.5 h-3 bg-sky-500 animate-pulse"></span>
-            <span class="text-[10px]">Running...</span>
+          <div *ngIf="!outputLogs" class="text-slate-700 italic select-none">Ready to run... <br>Click Run to start.
           </div>
-          <div *ngIf="isDebugging && isPaused" class="mt-2 flex gap-1 items-center text-yellow-500">
-            <lucide-icon [img]="icons.Pause" class="w-3 h-3"></lucide-icon>
-            <span class="text-[10px]">Paused</span>
+
+          <div *ngIf="isDebugging && !isPaused"
+            class="fixed bottom-4 right-4 flex gap-2 items-center bg-slate-800/80 p-2 rounded text-slate-400 shadow backdrop-blur">
+            <span class="w-2 h-2 rounded-full bg-sky-500 animate-pulse"></span>
+            <span class="text-xs">Running...</span>
           </div>
         </div>
 
-        <!-- Tests Tab -->
-        <div class="flex-1 overflow-auto p-4 custom-scrollbar" *ngIf="activeTab === 'tests'">
+        <!-- Tests -->
+        <div class="w-full h-full overflow-auto p-4 custom-scrollbar" *ngIf="activeTab === 'tests'">
           <div *ngFor="let result of testResults" class="mb-2 p-3 rounded bg-slate-900 border transition-all"
             [class.border-green-500/30]="result.pass" [class.bg-green-500/5]="result.pass"
             [class.border-red-500/30]="!result.pass" [class.bg-red-500/5]="!result.pass">
@@ -144,58 +129,35 @@
               </div>
             </div>
           </div>
-          <div *ngIf="testResults.length === 0"
-            class="flex flex-col items-center justify-center h-full text-slate-600 gap-2">
-            <lucide-icon [img]="icons.FileCode" class="w-8 h-8 opacity-20"></lucide-icon>
-            <div class="text-sm italic">No tests run yet.</div>
-          </div>
         </div>
 
-        <!-- Variables Tab (Stack Visualization) -->
-        <div class="flex-1 overflow-auto p-0 custom-scrollbar bg-slate-950" *ngIf="activeTab === 'variables'">
-          <div *ngIf="!isPaused" class="p-8 flex flex-col items-center justify-center text-slate-600 h-full">
-            <lucide-icon [img]="icons.Play" class="w-8 h-8 opacity-20 mb-2"></lucide-icon>
-            <p class="text-xs italic text-center">Program is running.<br>Pause to view variables.</p>
-          </div>
-
-          <table *ngIf="isPaused" class="w-full text-left border-collapse">
-            <thead class="bg-slate-900 text-slate-500 text-[10px] uppercase tracking-wider font-semibold sticky top-0">
-              <tr>
-                <th class="px-3 py-2 border-b border-slate-800">Name</th>
-                <th class="px-3 py-2 border-b border-slate-800 w-full">Value</th>
-              </tr>
-            </thead>
-            <tbody class="font-mono text-xs divide-y divide-slate-800/50">
-              <tr *ngFor="let v of debugVars" class="hover:bg-slate-900/50">
-                <td class="px-3 py-2 text-sky-400 font-medium">{{v.name}}</td>
-                <td class="px-3 py-2 text-slate-300 break-all">{{v.value}}</td>
-              </tr>
-              <tr *ngIf="debugVars.length === 0">
-                <td colspan="2" class="px-3 py-8 text-center text-slate-600 italic">
-                  No local variables found.<br>
-                  <span class="text-[10px] opacity-70">Variables appear after their declaration line executes.</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <!-- Simple Stack Display at bottom -->
-          <!-- Simple Stack Display at bottom -->
-          <div *ngIf="isPaused && debugStack.length" class="border-t border-slate-800 mt-auto">
-            <div class="px-3 py-1 bg-slate-900 text-[10px] text-slate-500 font-bold uppercase">Call Stack</div>
-            <div class="font-mono text-xs text-slate-400 flex flex-col-reverse">
-              <div *ngFor="let s of debugStack; let i = index; let last = last"
-                class="px-3 py-1 border-b border-slate-800/30 flex justify-between items-center"
-                [class.bg-sky-500/10]="last" [class.text-sky-300]="last">
-                <span>{{s}}</span>
-                <span *ngIf="last" class="text-[9px] text-sky-500 uppercase font-bold tracking-wider">Current</span>
+        <!-- Variables (Full Width) -->
+        <div class="w-full h-full bg-slate-50 flex flex-row" *ngIf="activeTab === 'variables'">
+          <!-- Call Stack Sidebar (retained inside visualizer view effectively) -->
+          <div class="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
+            <div
+              class="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Call Stack
+            </div>
+            <div class="flex-1 overflow-y-auto">
+              <div *ngFor="let frame of debugStack.slice().reverse(); let i = index"
+                class="px-3 py-2 text-sm border-b border-slate-100 flex items-center gap-2" [class.bg-sky-50]="i === 0"
+                [class.text-sky-700]="i === 0" [class.text-slate-600]="i !== 0">
+                <div *ngIf="i === 0" class="w-1.5 h-1.5 rounded-full bg-sky-500"></div>
+                <div *ngIf="i !== 0" class="w-1.5 h-1.5"></div>
+                <span class="font-mono truncate">{{ frame }}</span>
               </div>
             </div>
           </div>
+
+          <!-- Main Visualizer -->
+          <app-variable-viz [variables]="debugVars" class="flex-1 min-h-0 bg-slate-50"></app-variable-viz>
         </div>
 
-      </section>
+      </div>
 
     </div>
-  </main>
-</div>
+
+  </div>
+
+</app-sidebar>

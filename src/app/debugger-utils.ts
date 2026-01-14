@@ -65,7 +65,7 @@ export function instrumentCode(code: string): string {
 
                 // Regex to capture: Type, optional ptr, Name
                 // Allows: "int* p", "int *p", "int p", "Vector<int> v"
-                const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z0-9_<>:]+)\s*(?:[*&]\s*)?([a-zA-Z0-9_]+)\s*(?:=|;)/;
+                const varDeclRegex = /^\s*(?:const\s+)?(?:.+?)\s+(?:[*&]\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
                 const varMatch = line.match(varDeclRegex);
 
                 // Keywords to ignore for variable tracking

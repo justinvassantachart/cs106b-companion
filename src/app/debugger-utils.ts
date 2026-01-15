@@ -141,7 +141,7 @@ export function instrumentCode(code: string): string {
             isFuncStart = true;
             instrumentedFn += line + '\n';
             instrumentedFn += `    DBG_FUNC(${funcName});\n`;
-            instrumentedFn += `    DEBUG_STEP(${i + 2});\n`; // Step at start of function
+            instrumentedFn += `    DEBUG_STEP(${i + 1});\n`; // Stop at function signature to show frame init
 
             // --- Instrument Parameters ---
             const argsContent = line.substring(line.indexOf('(') + 1, line.lastIndexOf(')'));

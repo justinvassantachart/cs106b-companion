@@ -614,7 +614,7 @@ extern "C" {
         for (const auto& [addr, info] : _heap_registrations) {
            stringstream ssAddr; ssAddr << addr;
            cout << "*" << ssAddr.str() << "|"
-                << "heap_object" << "|" 
+                << info.type << "|" 
                 << ssAddr.str() << "|" // "Address" of the object is its heap address
                 << info.value << "|" // Value
                 << "0" << "|" // No target 

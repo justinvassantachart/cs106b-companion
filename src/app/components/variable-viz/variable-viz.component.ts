@@ -197,7 +197,12 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
     });
 
     this.frameGroups = Array.from(groups.entries()).map(([name, vars]) => ({ name, vars }));
-    this.heapObjects = Array.from(heapMap.values());
+    // Filter out raw system allocations that confuse the user
+    this.heapObjects = Array.from(heapMap.values()).filter(obj => {
+      const isRaw = obj.type === 'raw';
+      const isAllocMsg = obj.value.startsWith('Allocated (');
+      return !(isRaw && isAllocMsg);
+    });
     this.stackVars = this.variables.filter(v => v.frame !== 'heap');
   }
 

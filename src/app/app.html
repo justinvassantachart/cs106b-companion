@@ -22,39 +22,45 @@
 
         <div class="flex items-center gap-2">
           <button (click)="toggleTheme()"
-            class="p-2 mr-2 text-muted-foreground hover:text-foreground transition-colors rounded-full hover:bg-muted"
+            class="p-2 mr-2 text-muted-foreground hover:text-foreground transition-all rounded-full hover:bg-muted active:scale-95"
             title="Toggle Theme">
             <lucide-icon [img]="isDark ? icons.Moon : icons.Sun" class="w-5 h-5"></lucide-icon>
           </button>
 
           <button (click)="startDebugger()" [disabled]="isDebugging"
-            class="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
-            <lucide-icon [img]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
-            Run
+            class="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm min-w-[80px] justify-center active:scale-95 disabled:active:scale-100">
+            <ng-container *ngIf="!isCompiling">
+              <lucide-icon [img]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
+              Run
+            </ng-container>
+            <ng-container *ngIf="isCompiling">
+              <lucide-icon [img]="icons.Loader2" class="w-4 h-4 animate-spin"></lucide-icon>
+              Compiling...
+            </ng-container>
           </button>
 
           <div class="h-6 w-px bg-border mx-2"></div>
 
           <button (click)="step()" [disabled]="!isPaused"
-            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
             title="Step">
             <lucide-icon [img]="icons.StepForward" class="w-4 h-4"></lucide-icon>
           </button>
 
           <button (click)="runAll()" [disabled]="!isDebugging"
-            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
             title="Continue">
             <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
           </button>
 
           <button (click)="pause()" [disabled]="!isDebugging || isPaused"
-            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
             title="Pause">
             <lucide-icon [img]="icons.Pause" class="w-4 h-4"></lucide-icon>
           </button>
 
           <button (click)="stop()" [disabled]="!isDebugging"
-            class="p-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md disabled:opacity-30">
+            class="p-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md disabled:opacity-30 transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.Square" class="w-4 h-4 fill-current"></lucide-icon>
           </button>
         </div>

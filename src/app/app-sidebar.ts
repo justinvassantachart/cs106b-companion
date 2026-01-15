@@ -27,8 +27,10 @@ import { Assignment } from './assignments';
   template: `
     <div hlmSidebarWrapper class="h-full bg-background">
       <hlm-sidebar class="border-r border-border bg-card">
-        <div hlmSidebarHeader class="p-4 border-b border-border flex items-center gap-2">
-           <ng-icon hlm name="lucideTerminal" class="text-primary text-xl"></ng-icon>
+        <div hlmSidebarHeader class="p-4 border-b border-border flex items-center gap-3 bg-muted/20">
+           <div class="p-1.5 bg-primary/10 rounded-md">
+             <ng-icon hlm name="lucideTerminal" class="text-primary text-xl"></ng-icon>
+           </div>
            <h1 class="font-bold text-lg text-foreground tracking-tight">Stanford IDE</h1>
         </div>
         

@@ -28,6 +28,14 @@ import * as monaco from 'monaco-editor';
       margin-left: 5px;
       cursor: pointer;
     }
+    ::ng-deep .breakpoint-ghost {
+      background: rgba(239, 68, 68, 0.4); /* red-500 with opacity */
+      width: 12px !important;
+      height: 12px !important;
+      border-radius: 50%;
+      margin-left: 5px;
+      cursor: pointer;
+    }
     
     ::ng-deep .execution-line-highlight {
       background: rgba(234, 179, 8, 0.2); /* yellow-500/20 */
@@ -45,6 +53,8 @@ export class MonacoEditorComponent implements OnInit, OnDestroy, OnChanges {
   private editor: monaco.editor.IStandaloneCodeEditor | null = null;
   private executionLineDecorations: monaco.editor.IEditorDecorationsCollection | null = null;
   private breakpointDecorationIds: string[] = [];
+  private ghostBreakpointDecorationIds: string[] = [];
+  private lastGhostLine: number | null = null;
 
   private _breakpoints: Set<number> = new Set();
   @Input() set breakpoints(points: Set<number>) {
@@ -117,6 +127,21 @@ export class MonacoEditorComponent implements OnInit, OnDestroy, OnChanges {
         }
       });
 
+      this.editor.onMouseMove((e) => {
+        if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+          const lineNumber = e.target.position?.lineNumber;
+          if (lineNumber) {
+            this.updateGhostBreakpoint(lineNumber);
+          }
+        } else {
+          this.clearGhostBreakpoint();
+        }
+      });
+
+      this.editor.onMouseLeave(() => {
+        this.clearGhostBreakpoint();
+      });
+
       this.updateBreakpointDecorations();
     });
   }
@@ -175,5 +200,35 @@ export class MonacoEditorComponent implements OnInit, OnDestroy, OnChanges {
     }));
 
     this.breakpointDecorationIds = this.editor.deltaDecorations(this.breakpointDecorationIds, newDecorations);
+  }
+
+  private updateGhostBreakpoint(lineNumber: number) {
+    if (!this.editor) return;
+
+    // If there's already a real breakpoint here, don't show ghost
+    if (this._breakpoints.has(lineNumber)) {
+      this.clearGhostBreakpoint();
+      return;
+    }
+
+    // Avoid unnecessary updates
+    if (this.lastGhostLine === lineNumber) return;
+    this.lastGhostLine = lineNumber;
+
+    const newDecorations: monaco.editor.IModelDeltaDecoration[] = [{
+      range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+      options: {
+        isWholeLine: false,
+        glyphMarginClassName: 'breakpoint-ghost'
+      }
+    }];
+
+    this.ghostBreakpointDecorationIds = this.editor.deltaDecorations(this.ghostBreakpointDecorationIds, newDecorations);
+  }
+
+  private clearGhostBreakpoint() {
+    if (!this.editor || this.ghostBreakpointDecorationIds.length === 0) return;
+    this.ghostBreakpointDecorationIds = this.editor.deltaDecorations(this.ghostBreakpointDecorationIds, []);
+    this.lastGhostLine = null;
   }
 }

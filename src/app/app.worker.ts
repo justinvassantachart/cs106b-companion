@@ -10,7 +10,7 @@ async function bootstrap() {
   if (api) return;
 
   console.log('[Worker] Initializing API...');
-  postMessage({ type: 'log', text: '[Worker] Initializing Compiler...\n' });
+  // postMessage({ type: 'log', text: '[Worker] Initializing Compiler...\n' });
 
   api = new API({
     hostWrite: (s: string) => {
@@ -21,20 +21,20 @@ async function bootstrap() {
     clang: 'clang.wasm',
     lld: 'lld.wasm',
     compileStreaming: async (filename: string) => {
-      postMessage({ type: 'log', text: `[Worker] Fetching ${filename}...\n` });
+      // postMessage({ type: 'log', text: `[Worker] Fetching ${filename}...\n` });
       const response = await fetch(filename);
       if (!response.ok) throw new Error(`Fetch failed: ${filename}`);
       return WebAssembly.compile(await response.arrayBuffer());
     },
     readBuffer: async (filename: string) => {
-      postMessage({ type: 'log', text: `[Worker] Reading ${filename}...\n` });
+      // postMessage({ type: 'log', text: `[Worker] Reading ${filename}...\n` });
       const response = await fetch(filename);
       if (!response.ok) throw new Error(`Fetch failed: ${filename}`);
       return response.arrayBuffer();
     }
   });
 
-  postMessage({ type: 'log', text: '[Worker] Downloading resources...\n' });
+  // postMessage({ type: 'log', text: '[Worker] Downloading resources...\n' });
   await api.ready;
   postMessage({ type: 'log', text: '[Worker] Ready.\n' });
 
@@ -115,6 +115,11 @@ addEventListener('message', async ({ data }) => {
       // 3. Run (Load WASM and execute)
       const buffer = api.memfs.getFileContents(wasm);
       const testMod = await WebAssembly.compile(buffer);
+
+      // Notify main thread that compilation is done
+      postMessage({ type: 'compiled' });
+      postMessage({ type: 'log', text: '\n[Worker] Compilation successful. Starting execution...\n' });
+
       await api.run(testMod, wasm);
 
       postMessage({ type: 'finished' });

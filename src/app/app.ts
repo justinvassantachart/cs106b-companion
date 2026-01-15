@@ -1,7 +1,8 @@
 import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon } from 'lucide-angular';
+import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2 } from 'lucide-angular';
+
 import { Assignment, ASSIGNMENTS } from './assignments';
 import { instrumentCode } from './debugger-utils';
 import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
@@ -34,6 +35,7 @@ export class App implements AfterViewInit {
   outputLogs = "";
   isDebugging = false;
   isPaused = false;
+  isCompiling = false;
   worker: Worker | null = null;
   testResults: { pass: boolean; expression: string; expected?: string; actual?: string }[] = [];
   activeTab: 'console' | 'tests' | 'variables' = 'console';
@@ -49,7 +51,7 @@ export class App implements AfterViewInit {
 
   // Icon imports for template
   readonly icons = {
-    Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon
+    Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2
   };
 
   constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) {
@@ -113,6 +115,7 @@ export class App implements AfterViewInit {
   startDebugger() {
     this.outputLogs = "[STARTING WORKER...]\n";
     this.isDebugging = true;
+    this.isCompiling = true;
     this.isPaused = false;
     this.testResults = [];
     this.activeTab = 'console';
@@ -142,17 +145,26 @@ export class App implements AfterViewInit {
             this.processWorkerOutput(data.text);
             this.cdr.detectChanges();
           });
+        } else if (data.type === 'compiled') {
+          this.ngZone.run(() => {
+            this.isCompiling = false;
+            this.activeTab = 'variables';
+            this.cdr.detectChanges();
+          });
         } else if (data.type === 'finished') {
           this.ngZone.run(() => {
             this.outputLogs += "\n[FINISHED]";
             this.isDebugging = false;
+            this.isCompiling = false;
             this.isPaused = false;
             this.debugVars = []; // Clear vars
             if (this.editor) this.editor.setExecutionLine(null);
           });
         } else if (data.type === 'debug-paused') {
           this.ngZone.run(() => {
+            this.isCompiling = false; // Failsafe: if we paused, we must be done compiling
             this.isPaused = true;
+            this.activeTab = 'variables'; // Failsafe: ensure we are on the right tab
             if (this.editor) this.editor.setExecutionLine(data.line);
             this.cdr.detectChanges();
           });
@@ -166,6 +178,7 @@ export class App implements AfterViewInit {
     } else {
       this.outputLogs += "[ERROR] Web Workers not supported in this environment.";
       this.isDebugging = false;
+      this.isCompiling = false;
     }
   }
 
@@ -199,6 +212,7 @@ export class App implements AfterViewInit {
       this.outputLogs += "\n[STOPPED]";
     }
     this.isDebugging = false;
+    this.isCompiling = false;
     this.isPaused = false;
     this.debugVars = [];
     if (this.editor) this.editor.setExecutionLine(null);

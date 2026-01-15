@@ -43,7 +43,7 @@ import { CompanionFile } from './companion-files';
            <div class="p-1.5 bg-primary/10 rounded-md">
              <ng-icon hlm name="lucideTerminal" class="text-primary text-xl"></ng-icon>
            </div>
-           <h1 class="font-bold text-lg text-foreground tracking-tight">Stanford IDE</h1>
+           <h1 class="font-bold text-lg text-foreground tracking-tight">Justin's IDE Beta</h1>
         </div>
         
         <div hlmSidebarContent class="flex-1 overflow-y-auto">

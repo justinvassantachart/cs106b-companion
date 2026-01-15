@@ -12,13 +12,29 @@ export const ASSIGNMENTS: Assignment[] = [
         description: 'Learn how to use the Stanford Vector class. Add elements and print them.',
         starterCode: `#include "stanford.h"
 
+struct Node {
+    int val;
+    Node* next;
+};
+
+void helper() {
+    int* p = new int(42);
+    // p goes out of scope, but heap object should persist
+}
+
 int main() {
-    cout << "--- Vector Basics ---" << endl;
-    Vector<int> v;
-    // TODO: Add numbers 10, 20, 30 to the vector
+    cout << "--- Heap Test ---" << endl;
     
-    // TODO: Print the vector
-    cout << "Vector: " << v << endl;
+    helper();
+    
+    Node* list = new Node;
+    list->val = 1;
+    list->next = new Node;
+    list->next->val = 2;
+    list->next->next = nullptr;
+    
+    cout << "Check Heap Visualization now." << endl;
+    
     return 0;
 }
 `

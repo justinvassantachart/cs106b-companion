@@ -2,6 +2,120 @@ export function instrumentCode(code: string): string {
     const lines = code.split('\n');
     let instrumentedFn = "";
 
+    // --- Pass 1: Scan for Structs/Classes ---
+    interface FieldDef {
+        type: string;
+        name: string;
+        isPointer: boolean;
+        targetType?: string;
+    }
+    interface StructDef {
+        name: string;
+        fields: FieldDef[];
+    }
+    const structs: StructDef[] = [];
+
+    let currentStruct: StructDef | null = null;
+    let structBraceLevel = 0;
+    let inStruct = false;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        // Detect Struct Start
+        // struct Name {  or  struct Name{
+        const structStartRegex = /^\s*(?:struct|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{/;
+        const startMatch = trimmed.match(structStartRegex);
+
+        if (!inStruct && startMatch) {
+            inStruct = true;
+            structBraceLevel = 1; // The { in the match
+            currentStruct = { name: startMatch[1], fields: [] };
+            continue;
+        }
+
+        if (inStruct) {
+            // Count braces to find end
+            const open = (line.match(/{/g) || []).length;
+            const close = (line.match(/}/g) || []).length;
+            structBraceLevel += open - close;
+
+            if (structBraceLevel <= 0) {
+                if (currentStruct) structs.push(currentStruct);
+                currentStruct = null;
+                inStruct = false;
+                continue;
+            }
+
+            // Parse Fields
+            // Type name; or Type* name; or Type *name;
+            // Ignore methods, checking for (
+            if (!trimmed.includes('(') && !trimmed.startsWith('//')) {
+                // Regex: Type (pointer) Name ;
+                const fieldRegex = /^\s*(?:const\s+)?([a-zA-Z0-9_:]+(?:<[^;]+>)?)\s*(\*?)\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=\s*[^;]+)?;/;
+                const fMatch = trimmed.match(fieldRegex);
+                if (fMatch) {
+                    const rawType = fMatch[1]; // e.g. "int" or "Node"
+                    const ptrStar = fMatch[2]; // "*" or empty
+                    const name = fMatch[3];    // "next"
+
+                    // If ptrStar is empty, type might be "Node*" in rawType?
+                    // But simplified regex assumes space before * or around name.
+                    // Let's refine: "Node* next" -> rawType="Node", ptrStar="*", name="next" ?
+                    // Actually my regex is: ([type]) \s* (\*?) \s* ([name])
+                    // "Node* next" -> "Node" "*" "next"
+                    // "Node *next" -> "Node" "*" "next"
+                    // "Node next"  -> "Node" ""  "next"
+
+                    if (currentStruct) {
+                        currentStruct.fields.push({
+                            type: rawType,
+                            name: name,
+                            isPointer: !!ptrStar || rawType.endsWith('*'),
+                            targetType: rawType.replace('*', '').trim()
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Pass 1.5: Generate JSON Printers for Structs ---
+    // We generate a global operator<< for each discovered struct.
+    // This allows the debugger to print "{ \"val\": \"42\", \"next\": \"0x...\" }"
+    let generatedPrinters = "";
+    for (const s of structs) {
+        // Avoid re-definition if multiple structs have same name (unlikely in valid code but possible)
+        // Also check for conflict with existing operators? We assume student code doesn't have them if we are doing this.
+        // We use 'inline' or 'static' or just standard? Standard is fine for single file.
+
+        generatedPrinters += `\n// Auto-generated JSON printer for struct ${s.name}\n`;
+        generatedPrinters += `std::ostream& operator<<(std::ostream& os, const ${s.name}& obj) {\n`;
+        generatedPrinters += `    os << "{";\n`;
+
+        s.fields.forEach((field, index) => {
+            if (index > 0) generatedPrinters += `    os << ", ";\n`;
+            // Key
+            generatedPrinters += `    os << "\\" ${field.name}\\": ";\n`;
+
+            // If pointer, trigger recursive update
+            if (field.isPointer && field.targetType) {
+                // _debug_update_heap_info is defined in stanford.h (shim)
+                // We pass the pointer and the type name
+                generatedPrinters += `    _debug_update_heap_info(obj.${field.name}, "${field.targetType}");\n`;
+            }
+
+            // Value: We wrap in quotes to ensure valid JSON string values for simplicity
+            // This avoids issues with unquoted hex or complex types
+            generatedPrinters += `    os << "\\"" << obj.${field.name} << "\\"";\n`;
+        });
+
+        generatedPrinters += `    os << "}";\n`;
+        generatedPrinters += `    return os;\n`;
+        generatedPrinters += `}\n`;
+    }
+
+    // --- Pass 2: Instrument Function Bodies (Existing Logic) ---
     // Track if we are inside a function body
     let currentFunction: string | null = null;
     let braceLevel = 0;
@@ -13,10 +127,11 @@ export function instrumentCode(code: string): string {
         // Only look for function start if we are at top level (braceLevel 0)
         // Regex: ReturnType Name(Args) {
         // Exclude kqdws: if, while, for, switch, catch
+        // We match simplified pattern
         const funcStartRegex = /^\s*(?:[\w<>:&*]+)\s+([\w]+)\s*\([^)]*\)\s*\{/;
         const match = line.match(funcStartRegex);
 
-        const keywords = ['if', 'while', 'for', 'switch', 'catch', 'else'];
+        const keywords = ['if', 'while', 'for', 'switch', 'catch', 'else', 'struct', 'class'];
 
         let isFuncStart = false;
 
@@ -29,14 +144,11 @@ export function instrumentCode(code: string): string {
             instrumentedFn += `    DEBUG_STEP(${i + 2});\n`; // Step at start of function
 
             // --- Instrument Parameters ---
-            // Extract content between ( and )
             const argsContent = line.substring(line.indexOf('(') + 1, line.lastIndexOf(')'));
             if (argsContent.trim()) {
                 const args = argsContent.split(',');
                 for (const arg of args) {
                     const cleanArg = arg.trim();
-                    // Regex calls for parsing "Type varName" or "Type* varName" or "Type& varName"
-                    // We reuse logic similar to varDecl but simpler as we know it's an arg
                     const argMatch = cleanArg.match(/(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*$/);
                     if (argMatch) {
                         const argName = argMatch[1];
@@ -47,9 +159,6 @@ export function instrumentCode(code: string): string {
         }
 
         // Track braces
-        // We do this AFTER processing function start line output to avoid messing up the injection order?
-        // Actually, if we just output the line above, we are good.
-        // Check braces in the current line
         const openBraces = (line.match(/{/g) || []).length;
         const closeBraces = (line.match(/}/g) || []).length;
 
@@ -57,12 +166,11 @@ export function instrumentCode(code: string): string {
         braceLevel -= closeBraces;
 
         if (braceLevel === 0 && currentFunction) {
-            // We just exited the function
             currentFunction = null;
         }
 
         if (isFuncStart) {
-            continue; // Already handled
+            continue;
         }
 
         if (currentFunction) {
@@ -72,45 +180,22 @@ export function instrumentCode(code: string): string {
             const trimmed = line.trim();
 
             if (trimmed.length > 0 && !trimmed.startsWith('//') && trimmed.includes(';')) {
-                // Determine if we should pause BEFORE
-
                 const stepCode = `DEBUG_STEP(${i + 1}); `;
 
-                // Improved Regex for Logic
-                // 1. Prepend Step
-                // 2. Check for Var Decl to Append Track
-
-                // Regex to capture: Type, optional ptr, Name
-                // Allows: "int* p", "int *p", "int p", "Vector<int> v"
-                // Must start with valid type char (letter/_) to avoid matching "*p = 20" as "Type=* Name=p"
                 const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z_:][\w:<>\s*&]*?)\s+(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
                 const varMatch = line.match(varDeclRegex);
 
-                // Keywords to ignore for variable tracking
-                // We also check start of line for typedef/using/template/delete/throw to be safe
                 const lineStart = trimmed.split(' ')[0];
                 const ignoreStarts = ['typedef', 'using', 'template', 'return', 'co_return', 'co_yield', 'delete', 'throw'];
-
                 const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case', 'switch', 'default', 'true', 'false', 'nullptr'];
 
                 if (varMatch && !varKeywords.includes(varMatch[1]) && !ignoreStarts.includes(lineStart)) {
-                    // It is a variable declaration!
                     const varName = varMatch[1];
                     const trackCode = ` DBG_TRACK(${varName}, ${varName});`;
 
                     if (!trimmed.startsWith('for')) {
-                        // Standard Declaration: "int x = 5;"
-                        // Result: "DEBUG_STEP(..); int x = 5; DBG_TRACK(x, x);"
-                        // We assume the line ends with semicolon or has one.
-                        // We append trackCode after the FIRST semicolon found (heuristic).
-
                         newline = stepCode + line.replace(';', ';' + trackCode);
                     } else {
-                        // For loop with decl: "for (int i = 0; ...)"
-                        // We prepend step (pauses before loop).
-                        // We DO NOT track 'i' yet because it is scoped to loop and tricky to insert DBG_TRACK inside (?)
-                        // Actually, we can't easily insert DBG_TRACK inside specific for-loop parts syntax-wise without parsing.
-                        // So we SKIP tracking for-loop variables for now.
                         newline = stepCode + line;
                     }
                 } else {
@@ -126,5 +211,5 @@ export function instrumentCode(code: string): string {
         }
     }
 
-    return instrumentedFn;
+    return instrumentedFn + generatedPrinters;
 }

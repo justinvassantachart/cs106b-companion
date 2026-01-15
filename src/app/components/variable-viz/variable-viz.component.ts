@@ -1,5 +1,6 @@
-import { Component, Input, SimpleChanges, OnChanges, ElementRef, AfterViewChecked, HostListener } from '@angular/core';
+import { Component, Input, SimpleChanges, OnChanges, ElementRef, AfterViewChecked, HostListener, SecurityContext } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 interface DebugVar {
   name: string;
@@ -15,6 +16,7 @@ interface HeapObject {
   addr: string;
   value: string;
   type: string;
+  parsedHtml?: SafeHtml;
 }
 
 interface FrameGroup {
@@ -91,9 +93,9 @@ interface FrameGroup {
                  {{obj.addr}}
               </div>
               
-              <div class="font-mono text-xs text-card-foreground break-words mt-2 whitespace-pre-wrap">
-                 {{obj.value}}
-              </div>
+              <!-- Content with potential pointers -->
+              <div class="font-mono text-xs text-card-foreground break-words mt-2 whitespace-pre-wrap"
+                   [innerHTML]="obj.parsedHtml || obj.value"></div>
            </div>
         </div>
         
@@ -124,7 +126,7 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
 
   private resizeObserver: ResizeObserver | undefined;
 
-  constructor(private elementRef: ElementRef) { }
+  constructor(private elementRef: ElementRef, private sanitizer: DomSanitizer) { }
 
   ngOnChanges(changes: SimpleChanges) {
     if (changes['variables']) {
@@ -157,48 +159,96 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
   }
 
   processVariables() {
-    // 1. Group Stack Vars by Frame
+    // 1. Separate Stack and Heap
     const groups = new Map<string, DebugVar[]>();
+    const heapMap = new Map<string, HeapObject>();
 
     if (this.variables.length > 0) {
-      this.currentFrameName = this.variables[0].frame || 'global';
+      // Find first stack frame logic if needed, but usually just frame property
+      const firstStack = this.variables.find(v => v.frame !== 'heap');
+      this.currentFrameName = firstStack?.frame || 'global';
     }
 
     this.variables.forEach(v => {
-      const frame = v.frame || 'global';
-      if (!groups.has(frame)) {
-        groups.set(frame, []);
-      }
-      groups.get(frame)?.push(v);
-    });
-
-    this.frameGroups = Array.from(groups.entries()).map(([name, vars]) => ({ name, vars }));
-
-    // 2. Identify Heap Objects
-    const heapMap = new Map<string, HeapObject>();
-
-    this.variables.forEach(v => {
-      if (v.targetAddr) {
-        if (!heapMap.has(v.targetAddr)) {
-          heapMap.set(v.targetAddr, {
-            addr: v.targetAddr,
-            value: v.derefValue || v.value, // Visualize content if available
-            type: 'unknown'
+      if (v.frame === 'heap') {
+        // Explicit Heap Object from Shim
+        if (!heapMap.has(v.addr)) {
+          heapMap.set(v.addr, {
+            addr: v.addr,
+            value: v.value,
+            type: v.type,
+            parsedHtml: this.parseHeapValue(v.addr, v.value)
           });
+        }
+      } else {
+        // Stack Var
+        const frame = v.frame || 'global';
+        if (!groups.has(frame)) groups.set(frame, []);
+        groups.get(frame)?.push(v);
+
+        // Speculative: if stack var points to something NOT in heapMap yet?
+        // Shim should cover this, but if not:
+        if (v.targetAddr && v.targetAddr !== '0') {
+          // We don't add it as a separate heap object blindly anymore 
+          // to avoid duplicates if shim provides it next cycle or same cycle
+          // But if specific heap tracking is on, we trust the 'heap' frame vars.
         }
       }
     });
 
+    this.frameGroups = Array.from(groups.entries()).map(([name, vars]) => ({ name, vars }));
     this.heapObjects = Array.from(heapMap.values());
-    this.stackVars = this.variables;
+    this.stackVars = this.variables.filter(v => v.frame !== 'heap');
+  }
+
+  parseHeapValue(objAddr: string, val: string): SafeHtml {
+    // Attempt to parse as JSON (struct)
+    if (val.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(val);
+        // It's a struct! Build a table.
+        let html = `<table class="w-full text-xs border-collapse">`;
+        for (const [key, value] of Object.entries(parsed)) {
+          // Value is explicitly a string from our generator
+          const displayVal = this.processValueString(objAddr, String(value));
+          html += `
+              <tr class="border-b border-border last:border-0">
+                <td class="py-1 pr-2 font-bold text-muted-foreground w-1/3 align-top">${key}</td>
+                <td class="py-1 font-mono text-foreground break-all">${displayVal}</td>
+              </tr>
+            `;
+        }
+        html += `</table>`;
+        return this.sanitizer.bypassSecurityTrustHtml(html);
+      } catch (e) {
+        // Fallback if bad JSON
+      }
+    }
+
+    // Fallback: Raw string processing
+    return this.sanitizer.bypassSecurityTrustHtml(this.processValueString(objAddr, val));
+  }
+
+  processValueString(objAddr: string, val: string): string {
+    // 1. Escape HTML
+    const safeVal = val.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    // 2. Linkify pointers (0x...)
+    return safeVal.replace(/(0x[0-9a-fA-F]+)/g, (match) => {
+      if (match === '0x0' || match === '0') return `<span class="text-muted-foreground">nullptr</span>`;
+
+      // Create a span that we can target
+      return `<span class="heap-ptr cursor-pointer text-primary font-bold hover:underline" data-source-obj="${objAddr}" data-target-addr="${match}">${match}</span>`;
+    });
   }
 
   drawArrows() {
     this.arrows = [];
     const svgRect = this.elementRef.nativeElement.getBoundingClientRect();
 
+    // 1. Stack -> Heap
     this.stackVars.forEach(v => {
-      if (v.targetAddr) {
+      if (v.targetAddr && v.targetAddr !== '0') {
         const sourceId = 'ptr-source-' + v.name;
         const targetId = 'heap-' + v.targetAddr;
 
@@ -206,27 +256,49 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
         const targetEl = this.elementRef.nativeElement.querySelector('#' + targetId);
 
         if (sourceEl && targetEl) {
-          const sRect = sourceEl.getBoundingClientRect();
-          const tRect = targetEl.getBoundingClientRect();
-
-          // Calculate relative coordinates
-          const x1 = sRect.left + sRect.width / 2 - svgRect.left;
-          const y1 = sRect.top + sRect.height / 2 - svgRect.top;
-
-          // Target: aim for left center of heap object
-          const x2 = tRect.left - svgRect.left;
-          const y2 = tRect.top + tRect.height / 2 - svgRect.top;
-
-          // Bezier curve
-          const cx1 = x1 + (x2 - x1) / 2;
-          const cy1 = y1;
-          const cx2 = x2 - (x2 - x1) / 2;
-          const cy2 = y2;
-
-          const path = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
-          this.arrows.push({ path });
+          this.createArrow(sourceEl, targetEl, svgRect);
         }
       }
     });
+
+    // 2. Heap -> Heap (Recursive)
+    const heapPtrs = this.elementRef.nativeElement.querySelectorAll('.heap-ptr');
+    heapPtrs.forEach((el: Element) => {
+      const targetAddr = el.getAttribute('data-target-addr');
+      if (targetAddr) {
+        const targetEl = this.elementRef.nativeElement.querySelector('#heap-' + targetAddr);
+        if (targetEl) {
+          // Determine if self-reference?
+          // Visualizing self-ref is fine.
+          this.createArrow(el, targetEl, svgRect);
+        }
+      }
+    });
+  }
+
+  createArrow(sourceEl: Element, targetEl: Element, svgRect: DOMRect) {
+    const sRect = sourceEl.getBoundingClientRect();
+    const tRect = targetEl.getBoundingClientRect();
+
+    // Check visibility?
+    if (sRect.width === 0 || tRect.width === 0) return;
+
+    const x1 = sRect.left + sRect.width / 2 - svgRect.left;
+    const y1 = sRect.top + sRect.height / 2 - svgRect.top;
+
+    // Target: aim for nearest edge or center? Center is safe.
+    const x2 = tRect.left - svgRect.left; // Left edge
+    const y2 = tRect.top + tRect.height / 2 - svgRect.top;
+
+    // Bezier curve
+    const cx1 = x1 + (x2 - x1) / 2;
+    const cy1 = y1;
+    const cx2 = x2 - (x2 - x1) / 2;
+    const cy2 = y2;
+
+    // If same object (x1 close to x2), loop?
+
+    const path = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+    this.arrows.push({ path });
   }
 }

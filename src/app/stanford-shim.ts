@@ -304,13 +304,161 @@ ostream& operator<<(ostream& os, const GridLocation& g) { os << g.toString(); re
 // --------------------------------------------------------
 // DEBUGGING / VARIABLE TRACKING
 // --------------------------------------------------------
+// SFINAE helper to detect if operator<< exists
+template<typename T, typename = void>
+struct is_streamable : std::false_type {};
+
+template<typename T>
+struct is_streamable<T, std::void_t<decltype(std::declval<std::ostream&>() << std::declval<T>())>> : std::true_type {};
+
 struct VarInfo {
     string name;
     string type;
     string value;
 };
-// Abstract base for polymorphism
-// Abstract base for polymorphism
+
+// Heap Tracking
+struct HeapInfo {
+    void* addr;
+    size_t size;      // 0 if unknown
+    string type;      // "raw" or specific type
+    string value;     // Captured value string
+    bool is_array;
+};
+
+// Global heap registry: Addr -> Info
+map<void*, HeapInfo> _heap_registrations;
+
+// Re-entrancy guard for memory hooks
+bool _in_mem_hook = false;
+
+// Common helper to register raw allocation
+void _debug_register_allocation(void* p, size_t size, bool is_array) {
+    if (!p) return;
+    // Guard already handled in caller? Or here?
+    // Better in caller to avoid even calling this function/allocating stack for it if possible.
+    // But map operations happen here.
+    
+    HeapInfo info;
+    info.addr = p;
+    info.size = size;
+    info.type = "raw";
+    stringstream ss;
+    ss << "Allocated (" << size << " bytes)";
+    info.value = ss.str();
+    info.is_array = is_array;
+    _heap_registrations[p] = info;
+}
+
+// Unregister on delete
+void _debug_unregister_allocation(void* p) {
+    if (!p) return;
+    _heap_registrations.erase(p);
+}
+
+// Update type/value from a typed context (Tracer or operator<<)
+// Update type/value from a typed context (Tracer or operator<<)
+// Global recursion depth counter
+static int _debug_depth = 0;
+
+template <typename T>
+void _debug_update_heap_info(T* ptr, string typeName) {
+    if (!ptr) return;
+    
+    // Allow recursion but prevent infinite loops
+    if (_debug_depth > 50) return;
+    _debug_depth++;
+    
+    // Save old hook state (likely false, but could be true if recursive)
+    bool old_hook = _in_mem_hook;
+    _in_mem_hook = true; // Prevent internal allocations (map, stringstream) from being tracked
+    
+    void* addr = (void*)ptr;
+    
+    auto it = _heap_registrations.find(addr);
+    if (it != _heap_registrations.end()) {
+        it->second.type = typeName;
+        // Update value using the typed pointer if it allows streaming
+        if constexpr (is_streamable<T>::value) {
+            stringstream ss;
+            ss << (*ptr);
+            it->second.value = ss.str();
+        }
+    }
+    
+    _in_mem_hook = old_hook;
+    _debug_depth--;
+}
+
+// Function to register a pointer from generated code (recursive pointers)
+extern "C" void _debug_register_pointer(void* ptr, const char* typeName) {
+    // No-op for now as planned
+}
+
+// Global overrides for new/delete
+void* operator new(size_t size) {
+    if (_in_mem_hook) {
+        return malloc(size);
+    }
+    _in_mem_hook = true;
+    void* p = malloc(size);
+    _debug_register_allocation(p, size, false);
+    _in_mem_hook = false;
+    return p;
+}
+void* operator new[](size_t size) {
+    if (_in_mem_hook) {
+        return malloc(size);
+    }
+    _in_mem_hook = true;
+    void* p = malloc(size);
+    _debug_register_allocation(p, size, true);
+    _in_mem_hook = false;
+    return p;
+}
+void operator delete(void* p) noexcept {
+    if (_in_mem_hook) {
+        free(p);
+        return;
+    }
+    _in_mem_hook = true;
+    _debug_unregister_allocation(p);
+    free(p);
+    _in_mem_hook = false;
+}
+void operator delete[](void* p) noexcept {
+    if (_in_mem_hook) {
+        free(p);
+        return;
+    }
+    _in_mem_hook = true;
+    _debug_unregister_allocation(p);
+    free(p);
+    _in_mem_hook = false;
+}
+// Sized delete (C++14)
+void operator delete(void* p, size_t) noexcept {
+    if (_in_mem_hook) {
+        free(p);
+        return;
+    }
+    _in_mem_hook = true;
+    _debug_unregister_allocation(p);
+    free(p);
+    _in_mem_hook = false;
+}
+void operator delete[](void* p, size_t) noexcept {
+    if (_in_mem_hook) {
+        free(p);
+        return;
+    }
+    _in_mem_hook = true;
+    _debug_unregister_allocation(p);
+    free(p);
+    _in_mem_hook = false;
+}
+
+
 // Abstract base for polymorphism
 struct TracerBase {
     string name;
@@ -352,7 +500,11 @@ struct Tracer : TracerBase {
         if constexpr (std::is_same_v<T, bool>) {
             ss << (ref ? "true" : "false");
         } else {
-            ss << ref;
+            if constexpr (is_streamable<T>::value) {
+                ss << ref;
+            } else {
+                ss << "{...}";
+            }
         }
         return ss.str();
     }
@@ -378,7 +530,14 @@ struct Tracer<T*> : TracerBase {
         type = "ptr";
         frame = _call_stack.empty() ? "global" : _call_stack.back();
         _active_vars.push_back(this);
+        
+        // Speculatively update heap info if this points to a known heap block
+        if (ref) {
+           _debug_update_heap_info(ref, "known_type");
+        }
     }
+    // We also need to update whenever we query, because the value might have changed!
+    
     ~Tracer() {
          if (!_active_vars.empty() && _active_vars.back() == this) {
             _active_vars.pop_back();
@@ -394,6 +553,8 @@ struct Tracer<T*> : TracerBase {
         stringstream ss;
         // Print address it holds
         ss << ref;
+         // SIDE EFFECT: Update heap info.
+        _debug_update_heap_info(ref, "ptr_target");
         return ss.str();
     }
     string getAddr() const override {
@@ -410,8 +571,12 @@ struct Tracer<T*> : TracerBase {
     string getDerefValue() const override {
         if (ref == nullptr) return "null";
         stringstream ss;
-        // Force use of operator<< from global scope if available
-        ss << (*ref); 
+        if constexpr (is_streamable<T>::value) {
+            // Force use of operator<< from global scope if available
+            ss << (*ref);
+        } else {
+            ss << "{...}";
+        }
         return ss.str();
     }
 };
@@ -441,6 +606,22 @@ extern "C" {
                  << (*it)->frame << "|"
                  << (*it)->getDerefValue() << endl;
         }
+        
+        // Dump Heap Objects
+        // Dump logic also calls stringstream, so guard if needed?
+        // _debug_dump_vars is called from debugger, not inside alloc.
+        // But iterating _heap_registrations which is a map. Safe.
+        for (const auto& [addr, info] : _heap_registrations) {
+           stringstream ssAddr; ssAddr << addr;
+           cout << "*" << ssAddr.str() << "|"
+                << "heap_object" << "|" 
+                << ssAddr.str() << "|" // "Address" of the object is its heap address
+                << info.value << "|" // Value
+                << "0" << "|" // No target 
+                << "heap" << "|" // Frame = heap
+                << info.value << endl; // Deref value is itself
+        }
+        
         cout << "[DEBUG:VARS:END]" << endl;
         
         cout << "[DEBUG:STACK:START]" << endl;

@@ -1,14 +1,96 @@
-export interface Assignment {
+export interface CompanionFile {
     id: string;
     title: string;
     description: string;
     starterCode: string;
+    group?: string;
 }
 
-export const ASSIGNMENTS: Assignment[] = [
+export const FILES: CompanionFile[] = [
     {
-        id: 'vector-basics',
-        title: 'Vector Basics',
+        id: 'references-available-upon-request',
+        title: 'References Available Upon Request',
+        group: 'Section 1',
+        description: 'References available upon request.',
+        starterCode: `#include "stanford.h"
+
+void maui(string s) {
+    for (int i = 0; i < s.length(); i++) {
+        s[i] += 2;
+    }
+}
+
+void sina(string& s) {
+    for (int i = 0; i < s.length(); i++) {
+        s[i] += 2;
+    }
+}
+
+void moana(string& s) {
+    for (char ch : s) {
+        ch += 2;
+    }
+}
+
+void heihei(string& s) {
+    for (char& ch : s) {
+        ch += 2;
+    }
+}
+
+string teFiti(string& s) {
+    string result;
+    for (char ch : s) {
+        result += (ch + 2);
+    }   
+    return result;
+}
+
+int main() {
+    string s = "umm";
+
+    maui(s);
+    cout << s << endl;
+
+    sina(s);
+    cout << s << endl;
+
+    moana(s);
+    cout << s << endl;
+
+    heihei(s);
+    cout << s << endl;
+
+    teFiti(s);
+    cout << s << endl;
+
+    return 0;
+}
+
+`
+    },
+    {
+        id: 'grid-traversal',
+        title: 'Grid Traversal',
+        group: 'Data Structures',
+        description: 'Create a 3x3 Grid and fill it with values.',
+        starterCode: `#include "stanford.h"
+
+int main() {
+    cout << "--- Grid Traversal ---" << endl;
+    Grid<int> grid(3, 3);
+    
+    // TODO: Fill the grid with values 1 to 9
+    
+    cout << "Grid: " << endl << grid << endl;
+    return 0;
+}
+`
+    },
+    {
+        id: 'heap-visualizer',
+        title: 'Heap Visualizer',
+        group: 'Dynamic Memory',
         description: 'Learn how to use the Stanford Vector class. Add elements and print them.',
         starterCode: `#include "stanford.h"
 
@@ -42,6 +124,7 @@ int main() {
     {
         id: 'grid-traversal',
         title: 'Grid Traversal',
+        group: 'Data Structures',
         description: 'Create a 3x3 Grid and fill it with values.',
         starterCode: `#include "stanford.h"
 
@@ -59,6 +142,7 @@ int main() {
     {
         id: 'map-frequency',
         title: 'Map Frequency',
+        group: 'Data Structures',
         description: 'Count the frequency of characters in a string.',
         starterCode: `#include "stanford.h"
 
@@ -77,6 +161,7 @@ int main() {
     {
         id: 'testing-framework',
         title: 'Testing Framework',
+        group: 'Getting Started',
         description: 'Learn how to use EXPECT_EQUALS to write simple tests.',
         starterCode: `#include "stanford.h"
 

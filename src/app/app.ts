@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2 } from 'lucide-angular';
 
-import { Assignment, ASSIGNMENTS } from './assignments';
+import { CompanionFile, FILES } from './companion-files';
 import { instrumentCode } from './debugger-utils';
 import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
 import { VariableVizComponent } from './components/variable-viz/variable-viz.component';
@@ -28,9 +28,9 @@ import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
 export class App implements AfterViewInit {
   @ViewChild(MonacoEditorComponent) editor!: MonacoEditorComponent;
 
-  assignments = ASSIGNMENTS;
-  selectedAssignment: Assignment = ASSIGNMENTS[0];
-  studentCode: string = this.selectedAssignment.starterCode;
+  files = FILES;
+  selectedFile: CompanionFile = FILES[0];
+  studentCode: string = this.selectedFile.starterCode;
 
   outputLogs = "";
   isDebugging = false;
@@ -79,9 +79,9 @@ export class App implements AfterViewInit {
     }
   }
 
-  selectAssignment(assignment: Assignment) {
-    this.selectedAssignment = assignment;
-    this.studentCode = assignment.starterCode;
+  selectFile(file: CompanionFile) {
+    this.selectedFile = file;
+    this.studentCode = file.starterCode;
     this.outputLogs = "";
     this.testResults = [];
     this.activeTab = 'console';

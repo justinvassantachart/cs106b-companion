@@ -1,5 +1,4 @@
-<app-sidebar [assignments]="assignments" [selectedAssignment]="selectedAssignment"
-  (selectAssignment)="selectAssignment($event)">
+<app-sidebar [files]="files" [selectedFile]="selectedFile" (selectFile)="selectFile($event)">
 
   <!-- Main Layout: Vertical Split -->
   <div
@@ -16,7 +15,7 @@
           </button>
           <div class="flex items-center gap-2">
             <lucide-icon [img]="icons.FileCode" class="w-4 h-4 text-muted-foreground"></lucide-icon>
-            <span class="text-sm font-medium text-foreground">{{ selectedAssignment.title }}.cpp</span>
+            <span class="text-sm font-medium text-foreground">{{ selectedFile.title }}.cpp</span>
           </div>
         </div>
 

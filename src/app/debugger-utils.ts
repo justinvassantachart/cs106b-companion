@@ -1,402 +1,823 @@
-export function instrumentCode(code: string): string {
-    const lines = code.split('\n');
-    let instrumentedFn = "";
+/**
+ * Tree-sitter based C++ code instrumentation for debugging.
+ * 
+ * This module uses Tree-sitter's AST-based parsing to robustly instrument
+ * C++ code for debugging, replacing the previous regex-based approach.
+ */
 
-    // --- Pass 1: Scan for Structs/Classes ---
-    interface FieldDef {
-        type: string;
-        name: string;
-        isPointer: boolean;
-        targetType?: string;
+import { Parser, Language, Tree, Node } from 'web-tree-sitter';
+
+// Singleton parser instance
+let parser: Parser | null = null;
+let cppLanguage: Language | null = null;
+let initPromise: Promise<void> | null = null;
+
+/**
+ * Initialize the Tree-sitter parser with the C++ language grammar.
+ * This should be called once before any instrumentation.
+ */
+export async function initTreeSitter(): Promise<void> {
+    if (parser && cppLanguage) return;
+
+    if (initPromise) {
+        await initPromise;
+        return;
     }
-    interface StructDef {
-        name: string;
-        fields: FieldDef[];
-    }
-    const structs: StructDef[] = [];
 
-    let currentStruct: StructDef | null = null;
-    let structBraceLevel = 0;
-    let inStruct = false;
+    initPromise = (async () => {
+        console.log('[Tree-sitter] Starting initialization...');
 
-    for (const line of lines) {
-        const trimmed = line.trim();
-
-        // Detect Struct Start
-        // struct Name {  or  struct Name{
-        const structStartRegex = /^\s*(?:struct|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{/;
-        const startMatch = trimmed.match(structStartRegex);
-
-        if (!inStruct && startMatch) {
-            inStruct = true;
-            structBraceLevel = 1; // The { in the match
-            currentStruct = { name: startMatch[1], fields: [] };
-            continue;
-        }
-
-        if (inStruct) {
-            // Count braces to find end
-            const open = (line.match(/{/g) || []).length;
-            const close = (line.match(/}/g) || []).length;
-            structBraceLevel += open - close;
-
-            if (structBraceLevel <= 0) {
-                if (currentStruct) structs.push(currentStruct);
-                currentStruct = null;
-                inStruct = false;
-                continue;
+        try {
+            // Fetch WASM binary manually and pass it
+            console.log('[Tree-sitter] Fetching WASM binary...');
+            const wasmResponse = await fetch('/wasm/web-tree-sitter.wasm');
+            if (!wasmResponse.ok) {
+                throw new Error(`Failed to fetch web-tree-sitter.wasm: ${wasmResponse.status}`);
             }
+            const wasmBinary = await wasmResponse.arrayBuffer();
+            console.log('[Tree-sitter] WASM binary fetched, size:', wasmBinary.byteLength);
 
-            // Parse Fields
-            // Type name; or Type* name; or Type *name;
-            // Ignore methods, checking for (
-            if (!trimmed.includes('(') && !trimmed.startsWith('//')) {
-                // Regex: Type (pointer) Name ;
-                const fieldRegex = /^\s*(?:const\s+)?([a-zA-Z0-9_:]+(?:<[^;]+>)?)\s*(\*?)\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=\s*[^;]+)?;/;
-                const fMatch = trimmed.match(fieldRegex);
-                if (fMatch) {
-                    const rawType = fMatch[1]; // e.g. "int" or "Node"
-                    const ptrStar = fMatch[2]; // "*" or empty
-                    const name = fMatch[3];    // "next"
-
-                    if (currentStruct) {
-                        currentStruct.fields.push({
-                            type: rawType,
-                            name: name,
-                            isPointer: !!ptrStar || rawType.endsWith('*'),
-                            targetType: rawType.replace('*', '').trim()
-                        });
-                    }
+            await Parser.init({
+                locateFile: (scriptName: string) => {
+                    console.log('[Tree-sitter] locateFile called for:', scriptName);
+                    return `/wasm/${scriptName}`;
                 }
-            }
+            });
+            console.log('[Tree-sitter] Parser.init() completed');
+
+            parser = new Parser();
+            console.log('[Tree-sitter] Parser created, loading C++ language...');
+
+            cppLanguage = await Language.load('/wasm/tree-sitter-cpp.wasm');
+            console.log('[Tree-sitter] C++ language loaded');
+
+            parser.setLanguage(cppLanguage);
+            console.log('[Tree-sitter] C++ parser initialized successfully');
+        } catch (error) {
+            console.error('[Tree-sitter] Initialization failed:', error);
+            throw error;
+        }
+    })();
+
+    await initPromise;
+}
+
+// ============================================================================
+// Data Structures
+// ============================================================================
+
+interface FieldDef {
+    type: string;
+    name: string;
+    isPointer: boolean;
+    targetType?: string;
+}
+
+interface StructDef {
+    name: string;
+    fields: FieldDef[];
+}
+
+interface CodeEdit {
+    startIndex: number;
+    endIndex: number;
+    text: string;
+    // For debugging: which line this edit applies to
+    line?: number;
+}
+
+// ============================================================================
+// AST Traversal Helpers
+// ============================================================================
+
+/**
+ * Find a child node by field name
+ */
+function childByFieldName(node: Node, name: string): Node | null {
+    return node.childForFieldName(name);
+}
+
+/**
+ * Find all children with a specific type
+ */
+function childrenByType(node: Node, type: string): Node[] {
+    const results: Node[] = [];
+    for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child && child.type === type) {
+            results.push(child);
+        }
+    }
+    return results;
+}
+
+/**
+ * Recursively find all nodes of given types
+ */
+function findAllByTypes(node: Node, types: string[]): Node[] {
+    const results: Node[] = [];
+
+    function walk(n: Node) {
+        if (types.includes(n.type)) {
+            results.push(n);
+        }
+        for (let i = 0; i < n.childCount; i++) {
+            const child = n.child(i);
+            if (child) walk(child);
         }
     }
 
-    // --- Pass 1.5: Generate JSON Printers for Structs ---
-    // We generate a global operator<< for each discovered struct.
-    // This allows the debugger to print "{ \"val\": \"42\", \"next\": \"0x...\" }"
-    let generatedPrinters = "";
+    walk(node);
+    return results;
+}
+
+/**
+ * Get the line number (1-indexed) for a given byte offset
+ */
+function getLineForOffset(source: string, offset: number): number {
+    let line = 1;
+    for (let i = 0; i < offset && i < source.length; i++) {
+        if (source[i] === '\n') line++;
+    }
+    return line;
+}
+
+// ============================================================================
+// Struct Detection
+// ============================================================================
+
+function findStructs(tree: Tree): StructDef[] {
+    const structs: StructDef[] = [];
+    const structNodes = findAllByTypes(tree.rootNode, ['struct_specifier', 'class_specifier']);
+
+    for (const node of structNodes) {
+        // Get struct/class name
+        const nameNode = childByFieldName(node, 'name');
+        if (!nameNode) continue;
+
+        const name = nameNode.text;
+        const fields: FieldDef[] = [];
+
+        // Find field_declaration_list (the body)
+        const bodyNode = childByFieldName(node, 'body');
+        if (!bodyNode) continue;
+
+        // Find all field_declaration nodes
+        const fieldDecls = childrenByType(bodyNode, 'field_declaration');
+
+        for (const fieldDecl of fieldDecls) {
+            // Skip if it looks like a method (has function_declarator or parameter_list somewhere)
+            if (fieldDecl.text.includes('(')) continue;
+
+            // Get the type
+            const typeNode = childByFieldName(fieldDecl, 'type');
+            if (!typeNode) continue;
+
+            // Get the declarator (field name)
+            const declaratorNode = childByFieldName(fieldDecl, 'declarator');
+            if (!declaratorNode) continue;
+
+            // Handle pointer declarators
+            let fieldName = '';
+            let isPointer = false;
+
+            if (declaratorNode.type === 'pointer_declarator') {
+                isPointer = true;
+                // The actual name is nested inside
+                const innerDecl = childByFieldName(declaratorNode, 'declarator');
+                fieldName = innerDecl ? innerDecl.text : declaratorNode.text.replace('*', '').trim();
+            } else {
+                fieldName = declaratorNode.text;
+            }
+
+            // Check if type itself ends with * or is a pointer_type node
+            const typeText = typeNode.text;
+            if (typeText.endsWith('*') || typeNode.type === 'pointer_type') {
+                isPointer = true;
+            }
+
+            fields.push({
+                type: typeText.replace('*', '').trim(),
+                name: fieldName,
+                isPointer: isPointer,
+                targetType: isPointer ? typeText.replace('*', '').trim() : undefined
+            });
+        }
+
+        if (fields.length > 0) {
+            structs.push({ name, fields });
+        }
+    }
+
+    return structs;
+}
+
+/**
+ * Generate operator<< overloads for structs to enable JSON-like printing
+ */
+function generateStructPrinters(structs: StructDef[]): string {
+    let output = '';
+
     for (const s of structs) {
-        generatedPrinters += `\n// Auto-generated JSON printer for struct ${s.name}\n`;
-        generatedPrinters += `std::ostream& operator<<(std::ostream& os, const ${s.name}& obj) {\n`;
-        generatedPrinters += `    os << "{";\n`;
+        output += `\n// Auto-generated JSON printer for struct ${s.name}\n`;
+        output += `std::ostream& operator<<(std::ostream& os, const ${s.name}& obj) {\n`;
+        output += `    os << "{";\n`;
 
         s.fields.forEach((field, index) => {
-            if (index > 0) generatedPrinters += `    os << ", ";\n`;
-            // Key
-            generatedPrinters += `    os << "\\" ${field.name}\\": ";\n`;
+            if (index > 0) output += `    os << ", ";\n`;
+            output += `    os << "\\" ${field.name}\\": ";\n`;
 
-            // If pointer, trigger recursive update
+            // If pointer, trigger recursive heap update
             if (field.isPointer && field.targetType) {
-                // _debug_update_heap_info is defined in stanford.h (shim)
-                generatedPrinters += `    _debug_update_heap_info(obj.${field.name}, "${field.targetType}");\n`;
+                output += `    _debug_update_heap_info(obj.${field.name}, "${field.targetType}");\n`;
             }
 
-            // Value
-            generatedPrinters += `    os << "\\"" << obj.${field.name} << "\\"";\n`;
+            output += `    os << "\\"" << obj.${field.name} << "\\"";\n`;
         });
 
-        generatedPrinters += `    os << "}";\n`;
-        generatedPrinters += `    return os;\n`;
-        generatedPrinters += `}\n`;
+        output += `    os << "}";\n`;
+        output += `    return os;\n`;
+        output += `}\n`;
     }
 
-    // --- Pass 2 PRE-SCAN: Inject Comma Steps into For Loops ---
-    // We do this via a separate pass or just careful lookahead. 
-    // Let's modify 'lines' in place before the main instrumentation loop.
-    // This simplifies the main loop which just thinks it's processing normal code (with extra commas).
+    return output;
+}
 
-    const handledLoops = new Set<number>(); // Set of line numbers (1-indexed) where 'for' starts
+// ============================================================================
+// Function Detection and Instrumentation
+// ============================================================================
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.trim().startsWith('for') && line.includes('(')) {
-            // Attempt to parse standard for loop
-            let buffer = "";
-            let k = i;
-            let foundEnd = false;
-            let pCount = 0;
-            let endCol = -1;
+interface FunctionInfo {
+    name: string;
+    node: Node;
+    bodyNode: Node;
+    parameters: string[];
+    startLine: number;
+}
 
-            // Collect header until ')' that closes the for loop
-            while (k < lines.length) {
-                const txt = lines[k];
-                const startOff = (k === i) ? txt.indexOf('(') : 0;
+function findFunctions(tree: Tree, source: string): FunctionInfo[] {
+    const functions: FunctionInfo[] = [];
+    const funcNodes = findAllByTypes(tree.rootNode, ['function_definition']);
 
-                for (let c = startOff; c < txt.length; c++) {
-                    if (txt[c] === '(') pCount++;
-                    else if (txt[c] === ')') {
-                        pCount--;
-                        if (pCount === 0 && (k > i || c > txt.indexOf('('))) { // Ensure we closed the main paren
-                            foundEnd = true;
-                            endCol = c;
+    for (const node of funcNodes) {
+        // Get the declarator which contains the function name
+        const declaratorNode = childByFieldName(node, 'declarator');
+        if (!declaratorNode) continue;
+
+        // Extract function name - the declarator might be a function_declarator
+        let name = '';
+        let paramList: Node | null = null;
+
+        if (declaratorNode.type === 'function_declarator') {
+            const nameDecl = childByFieldName(declaratorNode, 'declarator');
+            name = nameDecl ? nameDecl.text : '';
+            paramList = childByFieldName(declaratorNode, 'parameters');
+        } else {
+            name = declaratorNode.text;
+        }
+
+        // Skip if no name or if it's a reserved keyword
+        const keywords = ['if', 'while', 'for', 'switch', 'catch', 'else', 'struct', 'class'];
+        if (!name || keywords.includes(name)) continue;
+
+        // Get function body
+        const bodyNode = childByFieldName(node, 'body');
+        if (!bodyNode || bodyNode.type !== 'compound_statement') continue;
+
+        // Extract parameters
+        const parameters: string[] = [];
+        if (paramList) {
+            const paramDecls = childrenByType(paramList, 'parameter_declaration');
+            for (const param of paramDecls) {
+                const paramDeclarator = childByFieldName(param, 'declarator');
+                if (paramDeclarator) {
+                    // Handle pointer/reference declarators
+                    let paramName = paramDeclarator.text;
+                    if (paramDeclarator.type === 'pointer_declarator' || paramDeclarator.type === 'reference_declarator') {
+                        const inner = childByFieldName(paramDeclarator, 'declarator');
+                        paramName = inner ? inner.text : paramName.replace(/[*&]/g, '').trim();
+                    }
+                    parameters.push(paramName);
+                }
+            }
+        }
+
+        functions.push({
+            name,
+            node,
+            bodyNode,
+            parameters,
+            startLine: getLineForOffset(source, node.startIndex)
+        });
+    }
+
+    return functions;
+}
+
+// ============================================================================
+// Loop Detection
+// ============================================================================
+
+interface LoopInfo {
+    type: 'for' | 'for_range' | 'while';
+    node: Node;
+    bodyNode: Node | null;
+    startLine: number;
+    loopVar?: string;
+    // For standard for loops, we inject into the incrementor
+    hasIncrement?: boolean;
+    incrementEndIndex?: number;
+    closingParenIndex?: number;
+}
+
+function findLoops(tree: Tree, source: string): LoopInfo[] {
+    const loops: LoopInfo[] = [];
+    const loopNodes = findAllByTypes(tree.rootNode, ['for_statement', 'for_range_loop', 'while_statement']);
+
+    for (const node of loopNodes) {
+        const startLine = getLineForOffset(source, node.startIndex);
+        const bodyNode = childByFieldName(node, 'body');
+
+        if (node.type === 'for_statement') {
+            // Standard for loop: for (init; condition; update) body
+            // We want to inject into the update section
+
+            // Find the closing paren of the for header
+            let closingParen: Node | null = null;
+            for (let i = 0; i < node.childCount; i++) {
+                const child = node.child(i);
+                if (child && child.type === ')') {
+                    closingParen = child;
+                    break;
+                }
+            }
+
+            // Find the update expression
+            const updateNode = childByFieldName(node, 'update');
+
+            // Extract loop variable from initializer
+            let loopVar: string | undefined;
+            const initNode = childByFieldName(node, 'initializer');
+            if (initNode) {
+                // Look for declaration or assignment in init
+                const declNodes = findAllByTypes(initNode, ['init_declarator', 'identifier']);
+                for (const d of declNodes) {
+                    if (d.type === 'init_declarator') {
+                        const declr = childByFieldName(d, 'declarator');
+                        if (declr) {
+                            loopVar = declr.text;
                             break;
                         }
+                    } else if (d.type === 'identifier' && !loopVar) {
+                        loopVar = d.text;
                     }
                 }
-
-                if (foundEnd) break;
-                k++;
             }
 
-            if (foundEnd) {
-                // Analyze valid range i..k
-                // We construct the full header string to check for semicolons
-                let fullHeader = "";
-                // Re-read carefully
-                for (let r = i; r <= k; r++) {
-                    fullHeader += lines[r]; // Simplified, preserving newlines might be needed for char counting if we were strict
+            loops.push({
+                type: 'for',
+                node,
+                bodyNode,
+                startLine,
+                loopVar,
+                hasIncrement: !!updateNode && updateNode.text.trim().length > 0,
+                incrementEndIndex: updateNode ? updateNode.endIndex : undefined,
+                closingParenIndex: closingParen ? closingParen.startIndex : undefined
+            });
+
+        } else if (node.type === 'for_range_loop') {
+            // Range-based for: for (decl : range) body
+            // Extract the loop variable
+            let loopVar: string | undefined;
+            const declNode = childByFieldName(node, 'declarator');
+            if (declNode) {
+                if (declNode.type === 'reference_declarator') {
+                    const inner = childByFieldName(declNode, 'declarator');
+                    loopVar = inner ? inner.text : declNode.text.replace('&', '').trim();
+                } else {
+                    loopVar = declNode.text;
                 }
-                // Check semicolons in the part inside parens
-                // Locate the bounding parens in `fullHeader`
-                const firstParen = fullHeader.indexOf('(');
-                const lastParen = fullHeader.lastIndexOf(')'); // Approximate if there are trailing chars, but we want the matching one.
+            }
 
-                // Let's use the `k` and `endCol` to find the exact injection point in `lines[k]`.
-                // Verify semicolons:
-                let semiCount = 0;
-                let d = 0;
-                // We can't easily count semicolons across multiple lines without reconstructing correctly.
-                // Let's just trust that if we found a balanced paren group starting with 'for', it's the header.
-                // We need to count ';' at depth 0.
+            loops.push({
+                type: 'for_range',
+                node,
+                bodyNode,
+                startLine,
+                loopVar
+            });
 
-                // Re-read carefully
-                let tempBuf = "";
-                for (let r = i; r <= k; r++) {
-                    let s = lines[r];
-                    if (r === k) s = s.substring(0, endCol + 1);
-                    tempBuf += s;
+        } else if (node.type === 'while_statement') {
+            loops.push({
+                type: 'while',
+                node,
+                bodyNode,
+                startLine
+            });
+        }
+    }
+
+    return loops;
+}
+
+// ============================================================================
+// Variable Declaration Detection
+// ============================================================================
+
+interface VarDeclInfo {
+    name: string;
+    node: Node;
+    line: number;
+    insertAfterIndex: number;  // Where to insert tracking code
+}
+
+function findVariableDeclarations(bodyNode: Node, source: string): VarDeclInfo[] {
+    const vars: VarDeclInfo[] = [];
+
+    // We look for declaration nodes inside the function body
+    const declNodes = findAllByTypes(bodyNode, ['declaration']);
+
+    for (const node of declNodes) {
+        // Skip if this is inside a for loop header
+        let parent = node.parent;
+        let skipNode = false;
+        while (parent) {
+            if (parent.type === 'for_statement') {
+                // Check if this declaration is the initializer
+                const initNode = childByFieldName(parent, 'initializer');
+                if (initNode && node.startIndex >= initNode.startIndex && node.endIndex <= initNode.endIndex) {
+                    skipNode = true;
+                    break;
+                }
+            }
+            parent = parent.parent;
+        }
+        if (skipNode) continue;
+
+        // Find the declarator to get variable name
+        const initDecls = findAllByTypes(node, ['init_declarator']);
+        for (const initDecl of initDecls) {
+            const declaratorNode = childByFieldName(initDecl, 'declarator');
+            if (declaratorNode) {
+                let varName = declaratorNode.text;
+                // Handle pointer/reference declarators
+                if (declaratorNode.type === 'pointer_declarator' || declaratorNode.type === 'reference_declarator') {
+                    const inner = childByFieldName(declaratorNode, 'declarator');
+                    varName = inner ? inner.text : varName.replace(/[*&]/g, '').trim();
                 }
 
-                // Scan tempBuf
-                for (const ch of tempBuf) {
-                    if (ch === '(') d++;
-                    else if (ch === ')') d--;
-                    else if (ch === ';' && d === 1) semiCount++; // Depth 1 because we are inside `for ( ... )`
+                vars.push({
+                    name: varName,
+                    node,
+                    line: getLineForOffset(source, node.startIndex),
+                    insertAfterIndex: node.endIndex
+                });
+            }
+        }
+
+        // Also handle simple declarations without initialization
+        if (initDecls.length === 0) {
+            const declaratorNode = childByFieldName(node, 'declarator');
+            if (declaratorNode) {
+                let varName = declaratorNode.text;
+                if (declaratorNode.type === 'pointer_declarator' || declaratorNode.type === 'reference_declarator') {
+                    const inner = childByFieldName(declaratorNode, 'declarator');
+                    varName = inner ? inner.text : varName.replace(/[*&]/g, '').trim();
                 }
 
-                if (semiCount === 2) {
-                    // Standard Loop!
-                    // Inject `, DEBUG_STEP(i+1)` before the closing paren `)` at `lines[k][endCol]`.
-                    const targetLine = lines[k];
-
-                    let hasIncr = false;
-                    let p2 = tempBuf.lastIndexOf(')');
-                    let s2 = tempBuf.lastIndexOf(';', p2);
-                    if (s2 !== -1) {
-                        const incrPart = tempBuf.substring(s2 + 1, p2);
-                        if (incrPart.trim().length > 0) hasIncr = true;
-                    }
-
-                    // Try to extract loop variable for better visibility during pause
-                    let injection = "";
-                    const loopVarRegex = /for\s*\(\s*(?:(?:const\s+)?(?:unsigned\s+)?[\w:<>,*&]+\s+)?([a-zA-Z_][\w]*)\s*[=:]/;
-                    const loopVarMatch = tempBuf.match(loopVarRegex);
-                    const varName = loopVarMatch ? loopVarMatch[1] : null;
-
-                    if (varName) {
-                        injection = hasIncr ? `, _debug_loop_step(${i + 1}, "${varName}", ${varName})` : `_debug_loop_step(${i + 1}, "${varName}", ${varName})`;
-                    } else {
-                        injection = hasIncr ? `, DEBUG_STEP(${i + 1})` : `DEBUG_STEP(${i + 1})`;
-                    }
-
-                    const before = lines[k].substring(0, endCol);
-                    const after = lines[k].substring(endCol);
-                    lines[k] = before + injection + after;
-
-                    handledLoops.add(i + 1); // Mark this loop (start line) as handled
-                }
+                vars.push({
+                    name: varName,
+                    node,
+                    line: getLineForOffset(source, node.startIndex),
+                    insertAfterIndex: node.endIndex
+                });
             }
         }
     }
 
+    return vars;
+}
 
-    // --- Pass 2: Main Instrumentation ---
-    // (Existing logic, but using handledLoops to suppress default loopback)
+// ============================================================================
+// Statement Line Detection (for DEBUG_STEP) - Recursive
+// ============================================================================
 
-    let currentFunction: string | null = null;
-    let braceLevel = 0;
-    let pendingVar: string | null = null;
-    const controlStack: number[] = [];
-    let pendingForLine: number | null = null;
+/**
+ * Recursively find all statements that need DEBUG_STEP instrumentation,
+ * including statements inside control flow bodies (if, for, while, switch).
+ */
+function findStatementsToInstrument(bodyNode: Node, source: string): { line: number; insertIndex: number }[] {
+    const statements: { line: number; insertIndex: number }[] = [];
+    collectStatementsRecursively(bodyNode, source, statements);
+    return statements;
+}
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+/**
+ * Helper to recursively collect statements from a compound_statement or single statement.
+ */
+function collectStatementsRecursively(
+    node: Node,
+    source: string,
+    statements: { line: number; insertIndex: number }[]
+): void {
+    // If this is a compound_statement (block with braces), process its children
+    if (node.type === 'compound_statement') {
+        for (let i = 0; i < node.childCount; i++) {
+            const child = node.child(i);
+            if (!child) continue;
 
-        // --- 1. Detect Function Start ---
-        const funcStartRegex = /^\s*(?:[\w<>:&*]+)\s+([\w]+)\s*\([^)]*\)\s*\{/;
-        const match = line.match(funcStartRegex);
-        const keywords = ['if', 'while', 'for', 'switch', 'catch', 'else', 'struct', 'class'];
-        let isFuncStart = false;
+            // Skip braces
+            if (child.type === '{' || child.type === '}') continue;
 
-        if (braceLevel === 0 && match && !keywords.includes(match[1])) {
-            const funcName = match[1];
-            currentFunction = funcName;
-            isFuncStart = true;
-            instrumentedFn += line + '\n';
-            instrumentedFn += `    DBG_FUNC(${funcName});\n`;
-            instrumentedFn += `    DEBUG_STEP(${i + 1});\n`;
+            processStatement(child, source, statements);
+        }
+    } else {
+        // Single statement (no braces) - process it directly
+        processStatement(node, source, statements);
+    }
+}
 
-            // Instrument Params 
-            const argsContent = line.substring(line.indexOf('(') + 1, line.lastIndexOf(')'));
-            if (argsContent.trim()) {
-                const args = argsContent.split(',');
-                for (const arg of args) {
-                    const cleanArg = arg.trim();
-                    const argMatch = cleanArg.match(/(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*$/);
-                    if (argMatch) {
-                        const argName = argMatch[1];
-                        instrumentedFn += `    DBG_TRACK(${argName}, ${argName});\n`;
+/**
+ * Process a single statement node - add DEBUG_STEP and recurse into control flow bodies.
+ */
+function processStatement(
+    child: Node,
+    source: string,
+    statements: { line: number; insertIndex: number }[]
+): void {
+    const line = getLineForOffset(source, child.startIndex);
+
+    // Statement types that need DEBUG_STEP
+    const instrumentableTypes = [
+        'expression_statement',
+        'declaration',
+        'return_statement',
+        'if_statement',
+        'for_statement',
+        'for_range_loop',
+        'while_statement',
+        'do_statement',
+        'switch_statement',
+        'break_statement',
+        'continue_statement',
+    ];
+
+    if (instrumentableTypes.includes(child.type)) {
+        statements.push({
+            line,
+            insertIndex: child.startIndex
+        });
+    }
+
+    // Recursively process bodies of control flow statements
+    if (child.type === 'if_statement') {
+        // Process the "then" branch (consequence)
+        const consequence = childByFieldName(child, 'consequence');
+        if (consequence) {
+            collectStatementsRecursively(consequence, source, statements);
+        }
+
+        // Process the "else" branch (alternative) if it exists
+        const alternative = childByFieldName(child, 'alternative');
+        if (alternative) {
+            // The alternative might be another if_statement (else if) or a compound_statement
+            if (alternative.type === 'if_statement') {
+                // else if - process as a statement (will add DEBUG_STEP) and recurse
+                processStatement(alternative, source, statements);
+            } else {
+                collectStatementsRecursively(alternative, source, statements);
+            }
+        }
+    } else if (child.type === 'for_statement' || child.type === 'for_range_loop' || child.type === 'while_statement' || child.type === 'do_statement') {
+        const body = childByFieldName(child, 'body');
+        if (body) {
+            collectStatementsRecursively(body, source, statements);
+        }
+    } else if (child.type === 'switch_statement') {
+        const body = childByFieldName(child, 'body');
+        if (body) {
+            // Switch body contains case_statement nodes
+            for (let i = 0; i < body.childCount; i++) {
+                const caseNode = body.child(i);
+                if (!caseNode) continue;
+
+                if (caseNode.type === 'case_statement') {
+                    // Process statements inside the case (skip the case label itself)
+                    for (let j = 0; j < caseNode.childCount; j++) {
+                        const caseChild = caseNode.child(j);
+                        if (!caseChild) continue;
+
+                        // Skip the case label (e.g., "case 1:" or "default:")
+                        if (caseChild.type === 'case' || caseChild.type === 'default' || caseChild.type === ':') continue;
+
+                        // Skip the condition value after 'case'
+                        if (caseChild.previousSibling?.type === 'case') continue;
+
+                        processStatement(caseChild, source, statements);
                     }
                 }
             }
         }
+    }
+}
 
-        const openBraces = (line.match(/{/g) || []).length;
-        const closeBraces = (line.match(/}/g) || []).length;
-        braceLevel += openBraces;
-        braceLevel -= closeBraces;
+// ============================================================================
+// Main Instrumentation Function
+// ============================================================================
 
-        if (braceLevel === 0 && currentFunction) {
-            currentFunction = null;
-            controlStack.length = 0;
-            pendingForLine = null;
-        }
+export function instrumentCode(code: string): string {
+    if (!parser || !cppLanguage) {
+        console.error('[Tree-sitter] Parser not initialized. Call initTreeSitter() first.');
+        // Fall back to returning the code as-is (or could throw)
+        return code;
+    }
 
-        if (isFuncStart) {
-            continue;
-        }
+    const tree = parser.parse(code);
+    if (!tree) {
+        console.error('[Tree-sitter] Failed to parse code.');
+        return code;
+    }
 
-        if (currentFunction) {
-            let newline = line;
-            const trimmed = line.trim();
+    const edits: CodeEdit[] = [];
 
-            if (trimmed.length > 0 && !trimmed.startsWith('//')) {
-                const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z_:][\w:<>, \t*&]*?)\s+(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
-                const varMatch = line.match(varDeclRegex);
-                const hasSemicolon = trimmed.includes(';');
-                const isForLoop = trimmed.startsWith('for');
+    // 1. Find and process structs
+    const structs = findStructs(tree);
 
-                const isControlFlow = (trimmed.startsWith('if') || trimmed.startsWith('while') || trimmed.startsWith('switch')) && !trimmed.startsWith('else');
-                let shouldStep = hasSemicolon || (varMatch && !isForLoop) || isControlFlow;
+    // 2. Find functions
+    const functions = findFunctions(tree, code);
 
-                if (trimmed.startsWith('}') && !hasSemicolon) {
-                    shouldStep = false;
-                }
+    // 3. For each function, instrument it
+    for (const func of functions) {
+        const bodyNode = func.bodyNode;
 
-                if (pendingVar) {
-                    if (hasSemicolon) {
-                        const trackCode = ` DBG_TRACK(${pendingVar}, ${pendingVar});`;
-                        const stepCode = `DEBUG_STEP(${i + 1}); `;
-                        newline = line.replace(';', ';' + trackCode + ' ' + stepCode);
-                        pendingVar = null;
-                        shouldStep = false;
-                    }
-                }
+        // Insert DBG_FUNC at the start of function body
+        const openBrace = bodyNode.child(0);
+        if (openBrace && openBrace.type === '{') {
+            let injection = ` DBG_FUNC(${func.name}); DEBUG_STEP(${func.startLine});`;
 
-                if (shouldStep || isForLoop) {
-                    const stepCode = `DEBUG_STEP(${i + 1}); `;
-                    const lineStart = trimmed.split(/[ \t(]/)[0];
-                    const ignoreStarts = ['typedef', 'using', 'template', 'return', 'co_return', 'co_yield', 'delete', 'throw'];
-                    const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case', 'switch', 'default', 'true', 'false', 'nullptr'];
-
-                    if (varMatch && !varKeywords.includes(varMatch[1]) && !ignoreStarts.includes(lineStart)) {
-                        const varName = varMatch[1];
-                        if (hasSemicolon) {
-                            if (!pendingVar) {
-                                const trackCode = ` DBG_TRACK(${varName}, ${varName});`;
-                                newline = stepCode + line.replace(';', ';' + trackCode);
-                            } else {
-                                newline = stepCode + newline;
-                            }
-                        } else {
-                            pendingVar = varName;
-                            newline = stepCode + line;
-                        }
-                    }
-                    else if (isForLoop) {
-                        // Original Logic: Add TRACK for loop var
-                        let loopVarName = null;
-                        const forVarRegex = /for\s*\(\s*(?:const\s+)?([\w:<>,*&\s]+?)\s+([a-zA-Z_][\w]*)\s*[=:]/;
-                        const forMatch = trimmed.match(forVarRegex);
-                        if (forMatch) {
-                            loopVarName = forMatch[2];
-                        }
-
-                        if (loopVarName && line.includes('{')) {
-                            newline = stepCode + line.replace('{', `{ DBG_TRACK(${loopVarName}, ${loopVarName});`);
-                        } else {
-                            newline = stepCode + line;
-                        }
-                    }
-                    else {
-                        if (pendingVar && hasSemicolon) {
-                            newline = stepCode + newline;
-                        } else {
-                            newline = stepCode + line;
-                        }
-                    }
-                }
+            // Add parameter tracking
+            for (const param of func.parameters) {
+                injection += ` DBG_TRACK(${param}, ${param});`;
             }
 
-            // Loopback Injection
-            const braceRegex = /[{}]/g;
-            let match;
-            let processedLine = "";
-            let lastIdx = 0;
-
-            while ((match = braceRegex.exec(newline)) !== null) {
-                const char = match[0];
-                const idx = match.index;
-                processedLine += newline.substring(lastIdx, idx);
-
-                if (char === '{') {
-                    const preceding = newline.substring(lastIdx, idx);
-
-                    if (/\bfor\s*\(/.test(preceding)) {
-                        // It matches a for loop on THIS line.
-                        // Was this loop handled?
-                        if (handledLoops.has(i + 1)) {
-                            controlStack.push(-1); // Handled, suppress loopback
-                        } else {
-                            controlStack.push(i + 1);
-                        }
-                        pendingForLine = null;
-                    } else if (pendingForLine !== null) {
-                        // Brace for a previous for loop line
-                        if (handledLoops.has(pendingForLine)) {
-                            controlStack.push(-1);
-                        } else {
-                            controlStack.push(pendingForLine);
-                        }
-                        pendingForLine = null;
-                    } else {
-                        controlStack.push(-1);
-                    }
-
-                    processedLine += '{';
-                } else { // '}'
-                    const startLine = controlStack.pop();
-                    if (startLine && startLine > 0) {
-                        processedLine += ` DEBUG_STEP(${startLine}); }`;
-                    } else {
-                        processedLine += '}';
-                    }
-                }
-                lastIdx = idx + 1;
-            }
-            processedLine += newline.substring(lastIdx);
-
-            if (trimmed.startsWith('for') && !processedLine.includes('{')) {
-                pendingForLine = i + 1;
-            }
-
-            instrumentedFn += processedLine + '\n';
+            edits.push({
+                startIndex: openBrace.endIndex,
+                endIndex: openBrace.endIndex,
+                text: injection,
+                line: func.startLine
+            });
         }
-        else {
-            instrumentedFn += line + '\n';
+
+        // Find all loops in this function and instrument them
+        const loops = findLoops(tree, code).filter(l =>
+            l.node.startIndex >= bodyNode.startIndex &&
+            l.node.endIndex <= bodyNode.endIndex
+        );
+
+        for (const loop of loops) {
+            // Inject DEBUG_STEP before the loop
+            edits.push({
+                startIndex: loop.node.startIndex,
+                endIndex: loop.node.startIndex,
+                text: `DEBUG_STEP(${loop.startLine}); `,
+                line: loop.startLine
+            });
+
+            // For standard for loops, inject step into the incrementor
+            if (loop.type === 'for' && loop.closingParenIndex !== undefined) {
+                const injection = loop.loopVar
+                    ? (loop.hasIncrement
+                        ? `, _debug_loop_step(${loop.startLine}, "${loop.loopVar}", ${loop.loopVar})`
+                        : `_debug_loop_step(${loop.startLine}, "${loop.loopVar}", ${loop.loopVar})`)
+                    : (loop.hasIncrement
+                        ? `, DEBUG_STEP(${loop.startLine})`
+                        : `DEBUG_STEP(${loop.startLine})`);
+
+                edits.push({
+                    startIndex: loop.closingParenIndex,
+                    endIndex: loop.closingParenIndex,
+                    text: injection,
+                    line: loop.startLine
+                });
+            }
+
+            // For loop body: inject tracking for loop variable and loopback
+            if (loop.bodyNode) {
+                if (loop.bodyNode.type === 'compound_statement') {
+                    // Has braces
+                    const openBrace = loop.bodyNode.child(0);
+                    if (openBrace && openBrace.type === '{') {
+                        let bodyInjection = '';
+                        if (loop.loopVar && (loop.type === 'for_range' || loop.type === 'for')) {
+                            bodyInjection += ` DBG_TRACK(${loop.loopVar}, ${loop.loopVar});`;
+                        }
+
+                        if (bodyInjection) {
+                            edits.push({
+                                startIndex: openBrace.endIndex,
+                                endIndex: openBrace.endIndex,
+                                text: bodyInjection,
+                                line: loop.startLine
+                            });
+                        }
+                    }
+
+                    // Add loopback step before closing brace (for range-based and while)
+                    if (loop.type !== 'for') { // Standard for loops handle this in incrementor
+                        const closeBrace = loop.bodyNode.child(loop.bodyNode.childCount - 1);
+                        if (closeBrace && closeBrace.type === '}') {
+                            edits.push({
+                                startIndex: closeBrace.startIndex,
+                                endIndex: closeBrace.startIndex,
+                                text: ` DEBUG_STEP(${loop.startLine}); `,
+                                line: loop.startLine
+                            });
+                        }
+                    }
+                } else {
+                    // Single statement body - wrap with braces
+                    const bodyStart = loop.bodyNode.startIndex;
+                    const bodyEnd = loop.bodyNode.endIndex;
+
+                    let prefix = '{ ';
+                    if (loop.loopVar) {
+                        prefix += `DBG_TRACK(${loop.loopVar}, ${loop.loopVar}); `;
+                    }
+
+                    edits.push({
+                        startIndex: bodyStart,
+                        endIndex: bodyStart,
+                        text: prefix,
+                        line: loop.startLine
+                    });
+
+                    let suffix = '';
+                    if (loop.type !== 'for') {
+                        suffix = ` DEBUG_STEP(${loop.startLine});`;
+                    }
+                    suffix += ' }';
+
+                    edits.push({
+                        startIndex: bodyEnd,
+                        endIndex: bodyEnd,
+                        text: suffix,
+                        line: loop.startLine
+                    });
+                }
+            }
+        }
+
+        // Find variable declarations and add tracking
+        const varDecls = findVariableDeclarations(bodyNode, code);
+        for (const varDecl of varDecls) {
+            // Check if this var is already handled by a loop
+            const isLoopVar = loops.some(l => l.loopVar === varDecl.name);
+            if (!isLoopVar) {
+                edits.push({
+                    startIndex: varDecl.insertAfterIndex,
+                    endIndex: varDecl.insertAfterIndex,
+                    text: ` DBG_TRACK(${varDecl.name}, ${varDecl.name});`,
+                    line: varDecl.line
+                });
+            }
+        }
+
+        // Find statements that need DEBUG_STEP
+        const statements = findStatementsToInstrument(bodyNode, code);
+        for (const stmt of statements) {
+            // Check if we already have an edit for this location (from loops etc)
+            const hasExistingEdit = edits.some(e =>
+                Math.abs(e.startIndex - stmt.insertIndex) < 5 && e.text.includes('DEBUG_STEP')
+            );
+
+            if (!hasExistingEdit) {
+                edits.push({
+                    startIndex: stmt.insertIndex,
+                    endIndex: stmt.insertIndex,
+                    text: `DEBUG_STEP(${stmt.line}); `,
+                    line: stmt.line
+                });
+            }
         }
     }
 
-    return instrumentedFn + generatedPrinters;
+    // Apply edits in reverse order to preserve offsets
+    edits.sort((a, b) => b.startIndex - a.startIndex);
+
+    let result = code;
+    for (const edit of edits) {
+        result = result.slice(0, edit.startIndex) + edit.text + result.slice(edit.endIndex);
+    }
+
+    // Append struct printers at the end
+    result += generateStructPrinters(structs);
+
+    return result;
+}
+
+/**
+ * Check if Tree-sitter has been initialized
+ */
+export function isTreeSitterReady(): boolean {
+    return parser !== null && cppLanguage !== null;
 }

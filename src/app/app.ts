@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight } from 'lucide-angular';
 
 import { CompanionFile, FILES } from './companion-files';
-import { instrumentCode } from './debugger-utils';
+import { instrumentCode, initTreeSitter, isTreeSitterReady } from './debugger-utils';
 import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
 import { VariableVizComponent } from './components/variable-viz/variable-viz.component';
 import { AppSidebar } from './app-sidebar';
@@ -155,7 +155,7 @@ export class App implements AfterViewInit {
     }
   }
 
-  startDebugger() {
+  async startDebugger() {
     this._liveOutputLogs = "[STARTING WORKER...]\n";
     this.isDebugging = true;
     this.isCompiling = true;
@@ -163,6 +163,20 @@ export class App implements AfterViewInit {
     this.testResults = [];
     this.activeTab = 'console';
     if (this.editor) this.editor.setExecutionLine(null);
+
+    // Initialize Tree-sitter if not already done
+    if (!isTreeSitterReady()) {
+      this._liveOutputLogs += "[Initializing C++ parser...]\n";
+      try {
+        await initTreeSitter();
+        this._liveOutputLogs += "[Parser ready.]\n";
+      } catch (e: any) {
+        this._liveOutputLogs += `[ERROR] Failed to initialize parser: ${e.message}\n`;
+        this.isDebugging = false;
+        this.isCompiling = false;
+        return;
+      }
+    }
 
     if (this.worker) this.worker.terminate();
 

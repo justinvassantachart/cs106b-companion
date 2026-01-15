@@ -3,128 +3,137 @@
 
   <!-- Main Layout: Vertical Split -->
   <div
-    class="flex flex-col h-full w-full bg-slate-900 text-slate-300 font-sans selection:bg-sky-500/30 overflow-hidden">
+    class="flex flex-col h-full w-full bg-background text-foreground font-sans selection:bg-primary/30 overflow-hidden">
 
     <!-- TOP PANEL: Toolbar + Editor (Flex 1) -->
-    <div class="flex-1 flex flex-col min-h-0 border-b border-slate-800">
+    <div class="flex-1 flex flex-col min-h-0 border-b border-border">
 
       <!-- Toolbar -->
-      <header class="h-12 border-b border-slate-800 bg-slate-900 flex items-center justify-between px-4 shrink-0">
+      <header class="h-12 border-b border-border bg-card flex items-center justify-between px-4 shrink-0">
         <div class="flex items-center gap-4">
-          <button hlmSidebarTrigger class="text-slate-500 hover:text-slate-300">
+          <button hlmSidebarTrigger class="text-muted-foreground hover:text-foreground transition-colors">
             <lucide-icon [img]="icons.Terminal" class="w-5 h-5"></lucide-icon>
           </button>
           <div class="flex items-center gap-2">
-            <lucide-icon [img]="icons.FileCode" class="w-4 h-4 text-slate-500"></lucide-icon>
-            <span class="text-sm font-medium text-slate-200">{{ selectedAssignment.title }}.cpp</span>
+            <lucide-icon [img]="icons.FileCode" class="w-4 h-4 text-muted-foreground"></lucide-icon>
+            <span class="text-sm font-medium text-foreground">{{ selectedAssignment.title }}.cpp</span>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
+          <button (click)="toggleTheme()"
+            class="p-2 mr-2 text-muted-foreground hover:text-foreground transition-colors rounded-full hover:bg-muted"
+            title="Toggle Theme">
+            <lucide-icon [img]="isDark ? icons.Moon : icons.Sun" class="w-5 h-5"></lucide-icon>
+          </button>
+
           <button (click)="startDebugger()" [disabled]="isDebugging"
-            class="flex items-center gap-2 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            class="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
             <lucide-icon [img]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
             Run
           </button>
 
-          <div class="h-6 w-px bg-slate-700 mx-2"></div>
+          <div class="h-6 w-px bg-border mx-2"></div>
 
           <button (click)="step()" [disabled]="!isPaused"
-            class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Step">
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
+            title="Step">
             <lucide-icon [img]="icons.StepForward" class="w-4 h-4"></lucide-icon>
           </button>
 
           <button (click)="runAll()" [disabled]="!isDebugging"
-            class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
             title="Continue">
             <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
           </button>
 
           <button (click)="pause()" [disabled]="!isDebugging || isPaused"
-            class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded disabled:opacity-30" title="Pause">
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
+            title="Pause">
             <lucide-icon [img]="icons.Pause" class="w-4 h-4"></lucide-icon>
           </button>
 
           <button (click)="stop()" [disabled]="!isDebugging"
-            class="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded disabled:opacity-30">
+            class="p-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md disabled:opacity-30">
             <lucide-icon [img]="icons.Square" class="w-4 h-4 fill-current"></lucide-icon>
           </button>
         </div>
       </header>
 
       <!-- Editor Area -->
-      <div class="flex-1 relative overflow-hidden">
+      <div class="flex-1 relative overflow-hidden bg-background">
         <app-monaco-editor [code]="studentCode" (codeChange)="handleCodeChange($event)" [breakpoints]="breakpoints"
-          (breakpointToggle)="toggleBreakpoint($event)" class="w-full h-full block">
+          (breakpointToggle)="toggleBreakpoint($event)" [theme]="isDark ? 'vs-dark' : 'vs-light'"
+          class="w-full h-full block">
         </app-monaco-editor>
       </div>
     </div>
 
     <!-- BOTTOM PANEL: Debugger Tools (Height 45vh) -->
-    <div
-      class="h-[45vh] flex flex-col bg-slate-950 border-t-4 border-slate-900 shadow-[0_-4px_12px_rgba(0,0,0,0.3)] z-10">
+    <div class="h-[45vh] flex flex-col bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.1)] z-10">
 
       <!-- Tabs Header -->
-      <div class="flex items-center border-b border-slate-800 px-4 bg-slate-950">
+      <div class="flex items-center border-b border-border px-4 bg-muted/50">
         <button
           class="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none"
-          [class.border-sky-500]="activeTab === 'console'" [class.text-sky-400]="activeTab === 'console'"
-          [class.text-slate-500]="activeTab !== 'console'" [class.border-transparent]="activeTab !== 'console'"
+          [class.border-primary]="activeTab === 'console'" [class.text-primary]="activeTab === 'console'"
+          [class.text-muted-foreground]="activeTab !== 'console'" [class.border-transparent]="activeTab !== 'console'"
           (click)="activeTab = 'console'">Console Output</button>
 
         <button
           class="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none flex items-center gap-2"
-          [class.border-sky-500]="activeTab === 'tests'" [class.text-sky-400]="activeTab === 'tests'"
-          [class.text-slate-500]="activeTab !== 'tests'" [class.border-transparent]="activeTab !== 'tests'"
+          [class.border-primary]="activeTab === 'tests'" [class.text-primary]="activeTab === 'tests'"
+          [class.text-muted-foreground]="activeTab !== 'tests'" [class.border-transparent]="activeTab !== 'tests'"
           (click)="activeTab = 'tests'">
           Test Results
           <div *ngIf="testResults.length"
-            class="ml-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-sky-400 font-mono">
+            class="ml-0.5 px-1.5 py-0.5 rounded-full bg-muted text-[10px] text-foreground font-mono">
             {{testResults.length}}</div>
         </button>
 
         <button *ngIf="isDebugging"
           class="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-[2px] transition-colors focus:outline-none flex items-center gap-2"
-          [class.border-sky-500]="activeTab === 'variables'" [class.text-sky-400]="activeTab === 'variables'"
-          [class.text-slate-500]="activeTab !== 'variables'" [class.border-transparent]="activeTab !== 'variables'"
-          (click)="activeTab = 'variables'">
+          [class.border-primary]="activeTab === 'variables'" [class.text-primary]="activeTab === 'variables'"
+          [class.text-muted-foreground]="activeTab !== 'variables'"
+          [class.border-transparent]="activeTab !== 'variables'" (click)="activeTab = 'variables'">
           Variables & Memory
         </button>
       </div>
 
       <!-- Tab Content Areas -->
-      <div class="flex-1 min-h-0 overflow-hidden relative">
+      <div class="flex-1 min-h-0 overflow-hidden relative bg-card">
 
         <!-- Console -->
         <div class="w-full h-full overflow-auto p-4 font-mono text-xs leading-relaxed custom-scrollbar"
           *ngIf="activeTab === 'console'">
-          <pre *ngIf="outputLogs" class="text-slate-300 whitespace-pre-wrap break-words">{{ outputLogs }}</pre>
-          <div *ngIf="!outputLogs" class="text-slate-700 italic select-none">Ready to run... <br>Click Run to start.
+          <pre *ngIf="outputLogs" class="text-foreground whitespace-pre-wrap break-words">{{ outputLogs }}</pre>
+          <div *ngIf="!outputLogs" class="text-muted-foreground italic select-none">Ready to run... <br>Click Run to
+            start.
           </div>
 
           <div *ngIf="isDebugging && !isPaused"
-            class="fixed bottom-4 right-4 flex gap-2 items-center bg-slate-800/80 p-2 rounded text-slate-400 shadow backdrop-blur">
-            <span class="w-2 h-2 rounded-full bg-sky-500 animate-pulse"></span>
+            class="fixed bottom-4 right-4 flex gap-2 items-center bg-popover/80 p-2 rounded-md text-popover-foreground shadow backdrop-blur border border-border">
+            <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
             <span class="text-xs">Running...</span>
           </div>
         </div>
 
         <!-- Tests -->
         <div class="w-full h-full overflow-auto p-4 custom-scrollbar" *ngIf="activeTab === 'tests'">
-          <div *ngFor="let result of testResults" class="mb-2 p-3 rounded bg-slate-900 border transition-all"
+          <div *ngFor="let result of testResults" class="mb-2 p-3 rounded-md bg-card border transition-all"
             [class.border-green-500/30]="result.pass" [class.bg-green-500/5]="result.pass"
-            [class.border-red-500/30]="!result.pass" [class.bg-red-500/5]="!result.pass">
+            [class.border-destructive/30]="!result.pass" [class.bg-destructive/5]="!result.pass">
             <div class="flex items-start gap-3">
               <lucide-icon [img]="result.pass ? icons.CheckCircle : icons.XCircle" [class.text-green-500]="result.pass"
-                [class.text-red-500]="!result.pass" class="w-5 h-5 mt-0.5 shrink-0"></lucide-icon>
+                [class.text-destructive]="!result.pass" class="w-5 h-5 mt-0.5 shrink-0"></lucide-icon>
               <div class="min-w-0 flex-1">
-                <div class="font-medium text-sm text-slate-200 font-mono break-all">{{ result.expression }}</div>
+                <div class="font-medium text-sm text-foreground font-mono break-all">{{ result.expression }}</div>
                 <div *ngIf="!result.pass"
-                  class="text-xs text-red-400 mt-2 font-mono bg-red-950/30 p-2 rounded border border-red-500/10">
-                  <div class="flex gap-2"><span class="opacity-50 w-16 px-1">Expected:</span> <span
-                      class="text-red-300">{{ result.expected }}</span></div>
-                  <div class="flex gap-2"><span class="opacity-50 w-16 px-1">Actual:</span> <span
-                      class="text-red-300">{{ result.actual }}</span></div>
+                  class="text-xs text-destructive mt-2 font-mono bg-destructive/10 p-2 rounded-md border border-destructive/20">
+                  <div class="flex gap-2"><span class="opacity-70 w-16 px-1">Expected:</span> <span
+                      class="text-destructive">{{ result.expected }}</span></div>
+                  <div class="flex gap-2"><span class="opacity-70 w-16 px-1">Actual:</span> <span
+                      class="text-destructive">{{ result.actual }}</span></div>
                 </div>
               </div>
             </div>
@@ -132,18 +141,18 @@
         </div>
 
         <!-- Variables (Full Width) -->
-        <div class="w-full h-full bg-slate-50 flex flex-row" *ngIf="activeTab === 'variables'">
+        <div class="w-full h-full flex flex-row" *ngIf="activeTab === 'variables'">
           <!-- Call Stack Sidebar (retained inside visualizer view effectively) -->
-          <div class="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
+          <div class="w-64 bg-muted/20 border-r border-border flex flex-col shrink-0">
             <div
-              class="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              class="px-3 py-2 bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Call Stack
             </div>
             <div class="flex-1 overflow-y-auto">
               <div *ngFor="let frame of debugStack.slice().reverse(); let i = index"
-                class="px-3 py-2 text-sm border-b border-slate-100 flex items-center gap-2" [class.bg-sky-50]="i === 0"
-                [class.text-sky-700]="i === 0" [class.text-slate-600]="i !== 0">
-                <div *ngIf="i === 0" class="w-1.5 h-1.5 rounded-full bg-sky-500"></div>
+                class="px-3 py-2 text-sm border-b border-border/50 flex items-center gap-2"
+                [class.bg-primary/10]="i === 0" [class.text-primary]="i === 0" [class.text-muted-foreground]="i !== 0">
+                <div *ngIf="i === 0" class="w-1.5 h-1.5 rounded-full bg-primary"></div>
                 <div *ngIf="i !== 0" class="w-1.5 h-1.5"></div>
                 <span class="font-mono truncate">{{ frame }}</span>
               </div>
@@ -151,7 +160,7 @@
           </div>
 
           <!-- Main Visualizer -->
-          <app-variable-viz [variables]="debugVars" class="flex-1 min-h-0 bg-slate-50"></app-variable-viz>
+          <app-variable-viz [variables]="debugVars" class="flex-1 min-h-0 bg-background"></app-variable-viz>
         </div>
 
       </div>

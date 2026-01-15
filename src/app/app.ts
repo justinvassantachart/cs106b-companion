@@ -1,7 +1,7 @@
 import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause } from 'lucide-angular';
+import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon } from 'lucide-angular';
 import { Assignment, ASSIGNMENTS } from './assignments';
 import { instrumentCode } from './debugger-utils';
 import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
@@ -24,7 +24,7 @@ import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
   templateUrl: './app.html',
   styleUrls: ['./app.css']
 })
-export class App {
+export class App implements AfterViewInit {
   @ViewChild(MonacoEditorComponent) editor!: MonacoEditorComponent;
 
   assignments = ASSIGNMENTS;
@@ -38,6 +38,9 @@ export class App {
   testResults: { pass: boolean; expression: string; expected?: string; actual?: string }[] = [];
   activeTab: 'console' | 'tests' | 'variables' = 'console';
 
+  // Theme State
+  isDark = true;
+
   sharedBuffer: Int32Array | null = null;
 
   // Debugging state
@@ -46,10 +49,33 @@ export class App {
 
   // Icon imports for template
   readonly icons = {
-    Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause
+    Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon
   };
 
-  constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) { }
+  constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) {
+    // Load theme from storage or default to Dark
+    const savedTheme = localStorage.getItem('app-theme');
+    this.isDark = savedTheme ? savedTheme === 'dark' : true;
+    this.applyTheme();
+  }
+
+  ngAfterViewInit() {
+    // Ensure editor resizes if needed
+  }
+
+  toggleTheme() {
+    this.isDark = !this.isDark;
+    localStorage.setItem('app-theme', this.isDark ? 'dark' : 'light');
+    this.applyTheme();
+  }
+
+  private applyTheme() {
+    if (this.isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }
 
   selectAssignment(assignment: Assignment) {
     this.selectedAssignment = assignment;

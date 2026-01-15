@@ -38,20 +38,21 @@ export class MonacoEditorComponent implements OnInit, OnDestroy, OnChanges {
   @ViewChild('editorContainer', { static: true }) editorContainer!: ElementRef;
 
   @Input() code: string = '';
+  @Input() theme: 'vs-dark' | 'vs-light' = 'vs-dark';
   @Output() codeChange = new EventEmitter<string>();
   @Output() breakpointToggle = new EventEmitter<number>();
 
   private editor: monaco.editor.IStandaloneCodeEditor | null = null;
   private executionLineDecorations: monaco.editor.IEditorDecorationsCollection | null = null;
   private breakpointDecorationIds: string[] = [];
-  
+
   private _breakpoints: Set<number> = new Set();
   @Input() set breakpoints(points: Set<number>) {
-      this._breakpoints = points;
-      this.updateBreakpointDecorations();
+    this._breakpoints = points;
+    this.updateBreakpointDecorations();
   }
 
-  constructor(private ngZone: NgZone) {}
+  constructor(private ngZone: NgZone) { }
 
   ngOnInit(): void {
     // Configure global MonacoEnvironment if not already done
@@ -85,7 +86,7 @@ export class MonacoEditorComponent implements OnInit, OnDestroy, OnChanges {
       this.editor = monaco.editor.create(this.editorContainer.nativeElement, {
         value: this.code,
         language: 'cpp',
-        theme: 'vs-dark',
+        theme: this.theme,
         automaticLayout: true,
         minimap: { enabled: false },
         glyphMargin: true,
@@ -98,8 +99,10 @@ export class MonacoEditorComponent implements OnInit, OnDestroy, OnChanges {
       this.editor.onDidChangeModelContent(() => {
         const val = this.editor?.getValue() || '';
         this.ngZone.run(() => {
-            // Emitting value, but we prevent loop in ngOnChanges
+          // Emitting value, but we prevent loop in ngOnChanges
+          if (this.code !== val) {
             this.codeChange.emit(val);
+          }
         });
       });
 
@@ -113,7 +116,7 @@ export class MonacoEditorComponent implements OnInit, OnDestroy, OnChanges {
           }
         }
       });
-      
+
       this.updateBreakpointDecorations();
     });
   }
@@ -125,47 +128,52 @@ export class MonacoEditorComponent implements OnInit, OnDestroy, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges) {
-      if (changes['code'] && !changes['code'].firstChange) {
-          if (this.editor && this.editor.getValue() !== this.code) {
-              this.editor.setValue(this.code);
-          }
+    if (changes['code'] && !changes['code'].firstChange) {
+      if (this.editor && this.editor.getValue() !== this.code) {
+        this.editor.setValue(this.code);
       }
+    }
+    if (changes['theme'] && !changes['theme'].firstChange) {
+      if (this.editor) {
+        monaco.editor.setTheme(this.theme);
+      }
+    }
   }
 
   setExecutionLine(lineNumber: number | null) {
-     if (!this.editor) return;
-     
-     if (lineNumber === null) {
-         this.executionLineDecorations?.clear();
-         return;
-     }
+    if (!this.editor) return;
 
-     const range = new monaco.Range(lineNumber, 1, lineNumber, 1);
-     this.executionLineDecorations?.clear();
-     this.executionLineDecorations = this.editor.createDecorationsCollection([
-         {
-             range,
-             options: {
-                 isWholeLine: true,
-                 className: 'execution-line-highlight'
-             }
-         }
-     ]);
-     
-     this.editor.revealLineInCenter(lineNumber);
+    if (lineNumber === null) {
+      this.executionLineDecorations?.clear();
+      return;
+    }
+
+    const range = new monaco.Range(lineNumber, 1, lineNumber, 1);
+    this.executionLineDecorations?.clear();
+    this.executionLineDecorations = this.editor.createDecorationsCollection([
+      {
+        range,
+        options: {
+          isWholeLine: true,
+          className: 'execution-line-highlight'
+        }
+      }
+    ]);
+
+    this.editor.revealLineInCenter(lineNumber);
   }
-  
+
   updateBreakpointDecorations() {
-      if (!this.editor) return;
-      
-      const newDecorations: monaco.editor.IModelDeltaDecoration[] = Array.from(this._breakpoints).map(ln => ({
-          range: new monaco.Range(ln, 1, ln, 1),
-          options: {
-              isWholeLine: false,
-              glyphMarginClassName: 'breakpoint-glyph'
-          }
-      }));
-      
-      this.breakpointDecorationIds = this.editor.deltaDecorations(this.breakpointDecorationIds, newDecorations);
+    if (!this.editor) return;
+
+    const newDecorations: monaco.editor.IModelDeltaDecoration[] = Array.from(this._breakpoints).map(ln => ({
+      range: new monaco.Range(ln, 1, ln, 1),
+      options: {
+        isWholeLine: false,
+        glyphMarginClassName: 'breakpoint-glyph'
+      }
+    }));
+
+    this.breakpointDecorationIds = this.editor.deltaDecorations(this.breakpointDecorationIds, newDecorations);
   }
 }

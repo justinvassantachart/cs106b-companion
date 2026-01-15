@@ -27,49 +27,48 @@ interface FrameGroup {
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="relative w-full h-full bg-slate-50 flex overflow-hidden font-sans text-sm selection:bg-none">
+    <div class="relative w-full h-full bg-background flex overflow-hidden font-sans text-sm selection:bg-none">
       
       <!-- SVG Layer for Arrows -->
       <svg class="absolute inset-0 w-full h-full pointer-events-none z-10">
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" 
           refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+            <polygon points="0 0, 10 3.5, 0 7" class="fill-muted-foreground" />
           </marker>
         </defs>
         <path *ngFor="let arrow of arrows" 
           [attr.d]="arrow.path" 
           fill="none" 
-          stroke="#64748b" 
+          class="stroke-muted-foreground transition-all duration-300"
           stroke-width="2" 
-          marker-end="url(#arrowhead)"
-          class="transition-all duration-300" />
+          marker-end="url(#arrowhead)" />
       </svg>
 
       <!-- Frames / Stack Column -->
-      <div class="w-1/3 min-w-[200px] flex flex-col border-r border-slate-200 bg-white z-0 overflow-y-auto p-4 gap-4">
-        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Frames (Stack)</h3>
+      <div class="w-1/3 min-w-[200px] flex flex-col border-r border-border bg-card z-0 overflow-y-auto p-4 gap-4">
+        <h3 class="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">Frames (Stack)</h3>
         
-        <div *ngFor="let group of frameGroups" class="bg-slate-100 rounded-lg p-3 shadow-sm border border-slate-200">
-           <div class="text-xs font-semibold text-slate-700 mb-3 border-b border-slate-300 pb-1 flex justify-between">
+        <div *ngFor="let group of frameGroups" class="bg-muted/10 rounded-lg p-3 shadow-sm border border-border">
+           <div class="text-xs font-semibold text-foreground mb-3 border-b border-border pb-1 flex justify-between">
              <span>{{group.name}}</span>
-             <span *ngIf="group.name === currentFrameName" class="text-[10px] bg-sky-100 text-sky-600 px-1.5 rounded-full">Active</span>
+             <span *ngIf="group.name === currentFrameName" class="text-[10px] bg-primary/10 text-primary px-1.5 rounded-full">Active</span>
            </div>
            
            <div class="flex flex-col gap-3">
              <div *ngFor="let v of group.vars" class="variable-row flex items-center justify-between group" [attr.data-id]="v.name">
-                <div class="font-mono text-xs font-bold text-slate-700 w-1/3 truncate" [title]="v.name">{{v.name}}</div>
+                <div class="font-mono text-xs font-bold text-foreground w-1/3 truncate" [title]="v.name">{{v.name}}</div>
                 
                 <!-- Value Box -->
                 <div class="relative flex-1" [attr.id]="'var-' + v.name">
                    <!-- Non-Pointer Value -->
-                   <div *ngIf="!v.targetAddr" class="bg-white border border-slate-300 px-2 py-1 rounded text-xs font-mono text-slate-800 shadow-sm truncate">
+                   <div *ngIf="!v.targetAddr" class="bg-background border border-input px-2 py-1 rounded text-xs font-mono text-foreground shadow-sm truncate">
                      {{v.value}}
                    </div>
 
                    <!-- Pointer Dot (Source of Arrow) -->
                    <div *ngIf="v.targetAddr" class="flex justify-end pr-2">
-                      <div class="w-3 h-3 bg-slate-800 rounded-full border-2 border-white shadow-sm cursor-pointer hover:scale-125 transition-transform"
+                      <div class="w-3 h-3 bg-foreground rounded-full border-2 border-background shadow-sm cursor-pointer hover:scale-125 transition-transform"
                            [attr.id]="'ptr-source-' + v.name"></div>
                    </div>
                 </div>
@@ -79,26 +78,26 @@ interface FrameGroup {
       </div>
 
       <!-- Heap / Objects Column -->
-      <div class="flex-1 bg-slate-50 overflow-y-auto p-4 z-0">
-        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Objects (Heap)</h3>
+      <div class="flex-1 bg-background overflow-y-auto p-4 z-0">
+        <h3 class="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">Objects (Heap)</h3>
         
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-min">
            <div *ngFor="let obj of heapObjects" 
-                class="bg-yellow-50 rounded-lg shadow-sm border border-yellow-200 p-3 relative transform transition-all hover:scale-[1.02]"
+                class="bg-card rounded-lg shadow-sm border border-border p-3 relative transform transition-all hover:scale-[1.02] hover:border-primary/50 hover:shadow-md"
                 [attr.id]="'heap-' + obj.addr">
               
               <!-- Address Label -->
-              <div class="absolute -top-2 -left-2 bg-yellow-200 text-[9px] px-1 rounded text-yellow-800 font-mono shadow-sm border border-yellow-300">
+              <div class="absolute -top-2 -left-2 bg-muted text-[9px] px-1 rounded text-muted-foreground font-mono shadow-sm border border-border">
                  {{obj.addr}}
               </div>
               
-              <div class="font-mono text-xs text-yellow-900 break-words mt-2 whitespace-pre-wrap">
+              <div class="font-mono text-xs text-card-foreground break-words mt-2 whitespace-pre-wrap">
                  {{obj.value}}
               </div>
            </div>
         </div>
         
-        <div *ngIf="heapObjects.length === 0" class="flex h-full items-center justify-center text-slate-400 italic text-xs">
+        <div *ngIf="heapObjects.length === 0" class="flex h-full items-center justify-center text-muted-foreground italic text-xs">
            No heap objects
         </div>
       </div>

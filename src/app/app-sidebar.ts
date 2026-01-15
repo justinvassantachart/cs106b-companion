@@ -25,24 +25,24 @@ import { Assignment } from './assignments';
     })
   ],
   template: `
-    <div hlmSidebarWrapper class="h-full">
-      <hlm-sidebar>
-        <div hlmSidebarHeader class="p-4 border-b border-slate-800 flex items-center gap-2">
-           <ng-icon hlm name="lucideTerminal" class="text-sky-500 text-xl"></ng-icon>
-           <h1 class="font-bold text-lg text-slate-800 tracking-tight">Stanford IDE</h1>
+    <div hlmSidebarWrapper class="h-full bg-background">
+      <hlm-sidebar class="border-r border-border bg-card">
+        <div hlmSidebarHeader class="p-4 border-b border-border flex items-center gap-2">
+           <ng-icon hlm name="lucideTerminal" class="text-primary text-xl"></ng-icon>
+           <h1 class="font-bold text-lg text-foreground tracking-tight">Stanford IDE</h1>
         </div>
         
         <div hlmSidebarContent class="flex-1 overflow-y-auto">
           <div hlmSidebarGroup>
-            <div hlmSidebarGroupLabel class="px-4 py-2 text-xs font-semibold text-slate-500 uppercase">Assignments</div>
+            <div hlmSidebarGroupLabel class="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase">Assignments</div>
             <div hlmSidebarGroupContent>
               <ul hlmSidebarMenu>
                 <li *ngFor="let assignment of assignments" hlmSidebarMenuItem>
                   <button hlmSidebarMenuButton 
                     (click)="selectAssignment.emit(assignment)"
-                    [class.bg-sky-50]="selectedAssignment === assignment"
-                    [class.text-sky-700]="selectedAssignment === assignment"
-                    class="w-full text-left">
+                    [class.bg-accent]="selectedAssignment === assignment"
+                    [class.text-accent-foreground]="selectedAssignment === assignment"
+                    class="w-full text-left hover:bg-accent/50 hover:text-accent-foreground transition-colors rounded-md p-2">
                     <ng-icon hlm name="lucideFileCode" class="mr-2"></ng-icon>
                     <div class="flex flex-col items-start overflow-hidden">
                         <span class="truncate font-medium">{{ assignment.title }}</span>
@@ -54,13 +54,13 @@ import { Assignment } from './assignments';
           </div>
         </div>
         
-        <div hlmSidebarFooter class="p-4 border-t border-slate-200">
-             <div class="text-xs text-slate-400">CS106B Companion</div>
+        <div hlmSidebarFooter class="p-4 border-t border-border">
+             <div class="text-xs text-muted-foreground">CS106B Companion</div>
         </div>
       </hlm-sidebar>
       
       <!-- Main Content Inset -->
-      <main hlmSidebarInset class="flex-1 flex flex-col min-h-0 bg-slate-50 overflow-hidden">
+      <main hlmSidebarInset class="flex-1 flex flex-col min-h-0 bg-background overflow-hidden relative shadow-[0_0_15px_rgba(0,0,0,0.05)]">
          <!-- Content Projected Here -->
          <ng-content></ng-content>
       </main>

@@ -584,7 +584,17 @@ struct Tracer<T*> : TracerBase {
 // Function Scope Tracker
 struct FuncTracker {
     string name;
-    FuncTracker(string n) : name(n) { _call_stack.push_back(n); }
+    FuncTracker(string n) {
+        int count = 0;
+        for (const auto& s : _call_stack) {
+            // Check if name matches exactly or starts with name + " ("
+            if (s == n || (s.size() > n.size() + 2 && s.substr(0, n.size()) == n && s.substr(n.size(), 2) == " (")) {
+                count++;
+            }
+        }
+        name = (count > 0) ? n + " (" + to_string(count + 1) + ")" : n;
+        _call_stack.push_back(name);
+    }
     ~FuncTracker() { 
         if (!_call_stack.empty()) _call_stack.pop_back(); 
     }

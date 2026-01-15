@@ -116,17 +116,20 @@ Vector<string> filter(string input, string suffix)
 
 int main() {
     Vector<string> results = filter("Zelenski,Szumlanski,Alonso", "Ski");
-    EXPECT_EQUAL(results, {"Zelenski","Szumlanski"});
+    Vector<string> expected1 = {"Zelenski","Szumlanski"};
+    EXPECT_EQUAL(results, expected1);
 
     results = filter("AmbaTi,Szumlanski,Tadimeti", "TI");
     Vector<string> expected = {"AmbaTi", "Tadimeti"};
     EXPECT_EQUAL(results, expected);
 
     results = filter("Zelenski,Szumlanski,Alonso", "nso");
-    EXPECT_EQUAL(results, {"Alonso"});
+    Vector<string> expected2 = {"Alonso"};
+    EXPECT_EQUAL(results, expected2);
 
     results = filter("Szumlanski,Coronado", "AaS");
-    EXPECT_EQUAL(results, {});
+    Vector<string> expected4 = {};
+    EXPECT_EQUAL(results, expected4);
 
     // what other tests can you add?
 
@@ -235,7 +238,7 @@ struct Node {
 
 void helper() {
     int* p = new int(42);
-    // p goes out of scope, but heap object should persist
+    // p goes out of scope, but heap object should persist in the visualizer as a memory leak
 }
 
 int main() {
@@ -343,6 +346,27 @@ int main() {
     
     EXPECT_EQUAL(stringJoin(v, "-"), "a-b-c");
     
+    return 0;
+}
+`
+    },
+    {
+        id: 'recursion-test',
+        title: 'Recursion Test',
+        group: 'Getting Started',
+        description: 'Simple recursion example to test debugger.',
+        starterCode: `#include "stanford.h"
+
+int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
+}
+
+int main() {
+    cout << "--- Recursion Test ---" << endl;
+    int result = factorial(5);
+    EXPECT_EQUAL(result, 120);
+    cout << "Factorial of 5 is: " << result << endl;
     return 0;
 }
 `

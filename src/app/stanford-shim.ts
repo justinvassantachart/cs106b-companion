@@ -79,6 +79,9 @@ public:
     
     typename vector<T>::iterator begin() { return _v.begin(); }
     typename vector<T>::iterator end() { return _v.end(); }
+    
+    bool operator==(const Vector<T>& other) const { return _v == other._v; }
+    bool operator!=(const Vector<T>& other) const { return _v != other._v; }
 };
 
 template <typename T>

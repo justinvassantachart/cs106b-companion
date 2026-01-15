@@ -1,7 +1,7 @@
 import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2 } from 'lucide-angular';
+import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight } from 'lucide-angular';
 
 import { CompanionFile, FILES } from './companion-files';
 import { instrumentCode } from './debugger-utils';
@@ -9,6 +9,13 @@ import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.
 import { VariableVizComponent } from './components/variable-viz/variable-viz.component';
 import { AppSidebar } from './app-sidebar';
 import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
+
+interface DebuggerState {
+  line: number | null;
+  variables: any[];
+  stack: string[];
+  consoleOutput: string;
+}
 
 @Component({
   selector: 'app-root',
@@ -32,7 +39,44 @@ export class App implements AfterViewInit {
   selectedFile: CompanionFile = FILES[0];
   studentCode: string = this.selectedFile.starterCode;
 
-  outputLogs = "";
+  // History State
+  history: DebuggerState[] = [];
+  historyIndex: number = -1; // -1 = Live, 0..N = History
+
+  // Live State (Internal)
+  private _liveOutputLogs = "";
+  private _liveDebugVars: any[] = [];
+  private _liveDebugStack: string[] = [];
+  private _liveCurrentLine: number | null = null; // Track live line for history snapshots
+
+  // Getters that switch based on mode
+  get outputLogs(): string {
+    if (this.historyIndex !== -1 && this.history[this.historyIndex]) {
+      return this.history[this.historyIndex].consoleOutput;
+    }
+    return this._liveOutputLogs;
+  }
+
+  get debugVars() {
+    if (this.historyIndex !== -1 && this.history[this.historyIndex]) {
+      return this.history[this.historyIndex].variables;
+    }
+    return this._liveDebugVars;
+  }
+
+  get debugStack() {
+    if (this.historyIndex !== -1 && this.history[this.historyIndex]) {
+      return this.history[this.historyIndex].stack;
+    }
+    return this._liveDebugStack;
+  }
+
+  get currentLine() {
+    if (this.historyIndex !== -1 && this.history[this.historyIndex]) {
+      return this.history[this.historyIndex].line;
+    }
+    return this._liveCurrentLine;
+  }
   isDebugging = false;
   isPaused = false;
   isCompiling = false;
@@ -47,11 +91,10 @@ export class App implements AfterViewInit {
 
   // Debugging state
   breakpoints: Set<number> = new Set();
-  currentLine: number | null = null;
 
   // Icon imports for template
   readonly icons = {
-    Play, Square, StepForward, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2
+    Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight
   };
 
   constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) {
@@ -82,7 +125,7 @@ export class App implements AfterViewInit {
   selectFile(file: CompanionFile) {
     this.selectedFile = file;
     this.studentCode = file.starterCode;
-    this.outputLogs = "";
+    this._liveOutputLogs = "";
     this.testResults = [];
     this.activeTab = 'console';
     this.stop(); // Stop any running debug session
@@ -113,7 +156,7 @@ export class App implements AfterViewInit {
   }
 
   startDebugger() {
-    this.outputLogs = "[STARTING WORKER...]\n";
+    this._liveOutputLogs = "[STARTING WORKER...]\n";
     this.isDebugging = true;
     this.isCompiling = true;
     this.isPaused = false;
@@ -128,7 +171,7 @@ export class App implements AfterViewInit {
 
       // Setup SharedArrayBuffer
       if (typeof SharedArrayBuffer === 'undefined') {
-        this.outputLogs += "[ERROR] SharedArrayBuffer is not defined. This browser environment might be missing COOP/COEP headers required for high-performance threading.\n";
+        this._liveOutputLogs += "[ERROR] SharedArrayBuffer is not defined. This browser environment might be missing COOP/COEP headers required for high-performance threading.\n";
         // Fallback or just error out cleanly
         this.isDebugging = false;
         this.isCompiling = false;
@@ -160,19 +203,40 @@ export class App implements AfterViewInit {
           });
         } else if (data.type === 'finished') {
           this.ngZone.run(() => {
-            this.outputLogs += "\n[FINISHED]";
+            this._liveOutputLogs += "\n[FINISHED]";
             this.isDebugging = false;
             this.isCompiling = false;
             this.isPaused = false;
-            this.debugVars = []; // Clear vars
+            this._liveDebugVars = []; // Clear vars
             if (this.editor) this.editor.setExecutionLine(null);
+            this._liveCurrentLine = null;
           });
         } else if (data.type === 'debug-paused') {
           this.ngZone.run(() => {
             this.isCompiling = false; // Failsafe: if we paused, we must be done compiling
             this.isPaused = true;
             this.activeTab = 'variables'; // Failsafe: ensure we are on the right tab
+
+            this._liveCurrentLine = data.line;
             if (this.editor) this.editor.setExecutionLine(data.line);
+
+            // Snapshot for History
+            // We take the snapshot AFTER vars are updated? 
+            // Wait, vars are updated via separate log messages [DEBUG:VARS:END].
+            // Usually [DEBUG:VARS:END] comes BEFORE debug-paused?
+            // Actually in app.worker, we do atomic store 0 (PAUSED) then postMessage 'debug-paused'.
+            // In shim, DEBUG_STEP calls _debug_dump_vars() THEN _debug_wait().
+            // So Vars should have arrived by now.
+
+            const snapshot: DebuggerState = {
+              line: data.line,
+              variables: JSON.parse(JSON.stringify(this._liveDebugVars)), // Deep copy basic objects
+              stack: [...this._liveDebugStack],
+              consoleOutput: this._liveOutputLogs
+            };
+            this.history.push(snapshot);
+            this.historyIndex = -1; // Snap to live
+
             this.cdr.detectChanges();
           });
         }
@@ -183,7 +247,7 @@ export class App implements AfterViewInit {
       this.worker.postMessage({ command: 'compile', code: codeToRun });
 
     } else {
-      this.outputLogs += "[ERROR] Web Workers not supported in this environment.";
+      this._liveOutputLogs += "[ERROR] Web Workers not supported in this environment.";
       this.isDebugging = false;
       this.isCompiling = false;
     }
@@ -193,6 +257,13 @@ export class App implements AfterViewInit {
 
   step() {
     if (!this.sharedBuffer) return;
+
+    // Jump to live if in history
+    if (this.historyIndex !== -1) {
+      this.historyIndex = -1;
+      this.updateEditorState();
+    }
+
     this.isPaused = false;
     if (this.editor) this.editor.setExecutionLine(null); // Clear highlight briefly
     Atomics.store(this.sharedBuffer, 0, 1); // 1 = STEP
@@ -201,6 +272,13 @@ export class App implements AfterViewInit {
 
   runAll() {
     if (!this.sharedBuffer) return;
+
+    // Jump to live
+    if (this.historyIndex !== -1) {
+      this.historyIndex = -1;
+      this.updateEditorState();
+    }
+
     this.isPaused = false;
     if (this.editor) this.editor.setExecutionLine(null);
     Atomics.store(this.sharedBuffer, 0, 2); // 2 = RUN
@@ -216,28 +294,66 @@ export class App implements AfterViewInit {
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
-      this.outputLogs += "\n[STOPPED]";
+      this._liveOutputLogs += "\n[STOPPED]";
     }
     this.isDebugging = false;
     this.isCompiling = false;
     this.isPaused = false;
-    this.debugVars = [];
+    this._liveDebugVars = [];
+    this._liveCurrentLine = null;
+    this.history = [];
+    this.historyIndex = -1;
     if (this.editor) this.editor.setExecutionLine(null);
+  }
+
+  // History Controls
+  stepBack() {
+    if (this.history.length === 0) return;
+    if (this.historyIndex === -1) {
+      // Started at live, go to last history item
+      this.historyIndex = this.history.length - 1;
+      // Note: The last history item IS the current paused state usually.
+      // If we want "previous", we might want history.length - 2?
+      // BUT: We push snapshot ON pause. So the last snapshot IS the current state.
+      // The user probably wants to see the state BEFORE the current one.
+      if (this.historyIndex > 0) {
+        this.historyIndex--;
+      }
+    } else {
+      if (this.historyIndex > 0) {
+        this.historyIndex--;
+      }
+    }
+    this.updateEditorState();
+  }
+
+  stepForward() {
+    if (this.historyIndex === -1) return; // Already at live
+
+    if (this.historyIndex < this.history.length - 1) {
+      this.historyIndex++;
+    } else {
+      // Return to live
+      this.historyIndex = -1;
+    }
+    this.updateEditorState();
+  }
+
+  get isHistoryMode() {
+    return this.historyIndex !== -1;
+  }
+
+  private updateEditorState() {
+    if (this.editor) {
+      this.editor.setExecutionLine(this.currentLine);
+    }
   }
 
   // Debug Data Parsing
   // Updated model for variables
-  debugVars: {
-    name: string;
-    type: string;
-    addr: string;
-    value: string;
-    targetAddr?: string;
-    frame?: string;
-    derefValue?: string;
-  }[] = [];
+  // (We use _liveDebugVars for storage now)
 
-  debugStack: string[] = [];
+
 
   private logBuffer = "";
   private isCapturingVars = false;
@@ -274,7 +390,7 @@ export class App implements AfterViewInit {
       }
       if (trimmed === '[DEBUG:STACK:END]') {
         this.isCapturingStack = false;
-        this.debugStack = [...this.capturedStackLines];
+        this._liveDebugStack = [...this.capturedStackLines];
         continue;
       }
 
@@ -287,7 +403,7 @@ export class App implements AfterViewInit {
         if (trimmed) this.capturedStackLines.push(trimmed);
       } else {
         // Normal log output
-        this.outputLogs += line;
+        this._liveOutputLogs += line;
         this.parseTestResult(line);
       }
     }
@@ -295,7 +411,7 @@ export class App implements AfterViewInit {
 
   private updateDebugVars() {
     console.log(`Updating Debug Vars. Lines captured: ${this.capturedVarsLines.length}`);
-    this.debugVars = this.capturedVarsLines.map(line => {
+    this._liveDebugVars = this.capturedVarsLines.map(line => {
       // Format: name|type|addr|value|targetAddr|frame|derefValue
       const parts = line.split('|');
       console.log('PARSED_VAR_DEBUG:', parts);

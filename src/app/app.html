@@ -40,15 +40,32 @@
 
           <div class="h-6 w-px bg-border mx-2"></div>
 
+          <!-- History Back -->
+          <button (click)="stepBack()" [disabled]="history.length === 0 || (historyIndex !== -1 && historyIndex === 0)"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
+            title="Step Back (View History)">
+            <lucide-icon [img]="icons.StepBack" class="w-4 h-4"></lucide-icon>
+          </button>
+
+          <!-- Execution Step -->
           <button (click)="step()" [disabled]="!isPaused"
             class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
-            title="Step">
-            <lucide-icon [img]="icons.StepForward" class="w-4 h-4"></lucide-icon>
+            title="Step (Execute Next Line)">
+            <lucide-icon [img]="icons.CornerDownRight" class="w-4 h-4"></lucide-icon>
           </button>
+
+          <!-- History Forward -->
+          <button (click)="stepForward()" [disabled]="historyIndex === -1"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
+            title="Step Forward (View History)">
+            <lucide-icon [img]="icons.ArrowRight" class="w-4 h-4"></lucide-icon>
+          </button>
+
+          <div class="h-6 w-px bg-border mx-2"></div>
 
           <button (click)="runAll()" [disabled]="!isDebugging"
             class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
-            title="Continue">
+            title="Continue (Resume Execution)">
             <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
           </button>
 

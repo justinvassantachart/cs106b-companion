@@ -584,7 +584,12 @@ struct Tracer<T*> : TracerBase {
 // Function Scope Tracker
 struct FuncTracker {
     string name;
-    FuncTracker(string n) : name(n) { _call_stack.push_back(n); }
+    FuncTracker(string n) {
+         stringstream ss;
+         ss << n << ":" << _call_stack.size();
+         name = ss.str();
+         _call_stack.push_back(name); 
+    }
     ~FuncTracker() { 
         if (!_call_stack.empty()) _call_stack.pop_back(); 
     }

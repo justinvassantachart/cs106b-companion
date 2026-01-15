@@ -41,7 +41,14 @@
             "loader": {
               ".ttf": "file"
             },
-            "webWorkerTsConfig": "tsconfig.worker.json"
+            "webWorkerTsConfig": "tsconfig.worker.json",
+            "externalDependencies": [
+              "fs",
+              "fs/promises",
+              "module",
+              "path",
+              "url"
+            ]
           },
           "configurations": {
             "production": {

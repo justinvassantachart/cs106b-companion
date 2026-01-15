@@ -160,8 +160,7 @@
                 [class.bg-primary/10]="i === 0" [class.text-primary]="i === 0" [class.text-muted-foreground]="i !== 0">
                 <div *ngIf="i === 0" class="w-1.5 h-1.5 rounded-full bg-primary"></div>
                 <div *ngIf="i !== 0" class="w-1.5 h-1.5"></div>
-                <!-- Clean up "func:depth" for display -->
-                <span class="font-mono truncate">{{ frame.split(':').slice(0, -1).join(':') || frame }}</span>
+                <span class="font-mono truncate">{{ frame }}</span>
               </div>
             </div>
           </div>

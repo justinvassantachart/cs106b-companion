@@ -21,8 +21,6 @@ interface HeapObject {
 
 interface FrameGroup {
   name: string;
-  rawName: string;
-  depth: number;
   vars: DebugVar[];
 }
 
@@ -56,7 +54,7 @@ interface FrameGroup {
         <div *ngFor="let group of frameGroups" class="bg-muted/10 rounded-lg p-3 shadow-sm border border-border">
            <div class="text-xs font-semibold text-foreground mb-3 border-b border-border pb-1 flex justify-between">
              <span>{{group.name}}</span>
-             <span *ngIf="group.rawName === currentFrameName" class="text-[10px] bg-primary/10 text-primary px-1.5 rounded-full">Active</span>
+             <span *ngIf="group.name === currentFrameName" class="text-[10px] bg-primary/10 text-primary px-1.5 rounded-full">Active</span>
            </div>
            
            <div class="flex flex-col gap-3">
@@ -198,28 +196,13 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
       }
     });
 
-    // Sort frames by depth (assuming format name:depth)
-    // Actually, just relying on map insertion order might fail if keys are mixed.
-    // Better to parse the depth.
-    this.frameGroups = Array.from(groups.entries()).map(([rawName, vars]) => {
-      // Parse "func:depth"
-      const parts = rawName.split(':');
-      let displayName = rawName;
-      let depth = 0;
-      if (parts.length > 1 && !isNaN(Number(parts[parts.length - 1]))) {
-        depth = Number(parts[parts.length - 1]);
-        displayName = parts.slice(0, parts.length - 1).join(':'); // Rejoin in case name has colons
-        // Optional: Add depth indicator to display? 
-        // displayName = `${displayName} (${depth})`;
-      }
-      return {
-        name: displayName,
-        rawName,
-        depth,
-        vars
-      };
-    }).sort((a, b) => b.depth - a.depth); // Show deepest recursion first (top of stack)
-
+    this.frameGroups = Array.from(groups.entries()).map(([name, vars]) => ({ name, vars }));
+    // Filter out raw system allocations that confuse the user
+    this.heapObjects = Array.from(heapMap.values()).filter(obj => {
+      const isRaw = obj.type === 'raw';
+      const isAllocMsg = obj.value.startsWith('Allocated (');
+      return !(isRaw && isAllocMsg);
+    });
     this.stackVars = this.variables.filter(v => v.frame !== 'heap');
   }
 

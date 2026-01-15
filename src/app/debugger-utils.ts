@@ -119,6 +119,7 @@ export function instrumentCode(code: string): string {
     // Track if we are inside a function body
     let currentFunction: string | null = null;
     let braceLevel = 0;
+    let pendingVar: string | null = null; // Track multi-line declarations
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -175,38 +176,95 @@ export function instrumentCode(code: string): string {
 
         if (currentFunction) {
             // --- 2. Instrument variable declarations & Steps in function Body ---
-
             let newline = line;
             const trimmed = line.trim();
 
-            if (trimmed.length > 0 && !trimmed.startsWith('//') && trimmed.includes(';')) {
-                const stepCode = `DEBUG_STEP(${i + 1}); `;
-
-                const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z_:][\w:<>\s*&]*?)\s+(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
+            if (trimmed.length > 0 && !trimmed.startsWith('//')) {
+                // Regex updated to include comma in type [\\w:<>,\\s*&]*?
+                const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z_:][\w:<>,\\s*&]*?)\s+(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
                 const varMatch = line.match(varDeclRegex);
+                const hasSemicolon = trimmed.includes(';');
+                const isForLoop = trimmed.startsWith('for');
 
-                const lineStart = trimmed.split(' ')[0];
-                const ignoreStarts = ['typedef', 'using', 'template', 'return', 'co_return', 'co_yield', 'delete', 'throw'];
-                const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case', 'switch', 'default', 'true', 'false', 'nullptr'];
+                // Determine if we should add a DEBUG_STEP
+                let shouldStep = hasSemicolon || (varMatch && !isForLoop);
 
-                if (varMatch && !varKeywords.includes(varMatch[1]) && !ignoreStarts.includes(lineStart)) {
-                    const varName = varMatch[1];
-                    const trackCode = ` DBG_TRACK(${varName}, ${varName});`;
+                // Skip trailing braces to avoid { ... }; }; blocks inside initializers
+                if (trimmed.startsWith('}') && !hasSemicolon) {
+                    shouldStep = false;
+                }
 
-                    if (!trimmed.startsWith('for')) {
-                        newline = stepCode + line.replace(';', ';' + trackCode);
-                    } else {
-                        newline = stepCode + line;
+                // Multi-line declaration tracking
+                if (pendingVar) {
+                    if (hasSemicolon) {
+                        // For multi-line init close, we must NOT prepend DEBUG_STEP (syntax error inside brackets)
+                        // Instead, we append it after the semicolon.
+                        const trackCode = ` DBG_TRACK(${pendingVar}, ${pendingVar});`;
+                        const stepCode = `DEBUG_STEP(${i + 1}); `;
+                        newline = line.replace(';', ';' + trackCode + ' ' + stepCode);
+
+                        pendingVar = null; // Clear
+
+                        // We handled the step/track manually, so don't run generic logic
+                        shouldStep = false;
                     }
-                } else {
-                    // Not a declaration, just a statement (expression, return, etc)
-                    // Result: "DEBUG_STEP(..); statement;"
-                    newline = stepCode + line;
+                }
+
+                if (shouldStep || isForLoop) {
+                    const stepCode = `DEBUG_STEP(${i + 1}); `;
+
+                    const lineStart = trimmed.split(/[ \t(]/)[0];
+                    const ignoreStarts = ['typedef', 'using', 'template', 'return', 'co_return', 'co_yield', 'delete', 'throw'];
+                    const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case', 'switch', 'default', 'true', 'false', 'nullptr'];
+
+                    if (varMatch && !varKeywords.includes(varMatch[1]) && !ignoreStarts.includes(lineStart)) {
+                        const varName = varMatch[1];
+
+                        // Only add tracking if it's a complete line or we are sure it's not breaking an init list
+                        if (hasSemicolon) {
+                            if (!pendingVar) {
+                                const trackCode = ` DBG_TRACK(${varName}, ${varName});`;
+                                newline = stepCode + line.replace(';', ';' + trackCode);
+                            } else {
+                                // pendingVar was resolved above, just prepend stepCode
+                                newline = stepCode + newline;
+                            }
+                        } else {
+                            // No semicolon? Multi-line init start!
+                            pendingVar = varName;
+                            newline = stepCode + line;
+                        }
+                    }
+                    else if (isForLoop) {
+                        // Specific parsing for for loops
+                        let loopVarName = null;
+                        const forVarRegex = /for\s*\(\s*(?:const\s+)?([\w:<>,*&\s]+?)\s+([a-zA-Z_][\w]*)\s*[=:]/;
+                        const forMatch = trimmed.match(forVarRegex);
+                        if (forMatch) {
+                            loopVarName = forMatch[2];
+                        }
+
+                        if (loopVarName && line.includes('{')) {
+                            newline = stepCode + line.replace('{', `{ DBG_TRACK(${loopVarName}, ${loopVarName});`);
+                        } else {
+                            newline = stepCode + line;
+                        }
+                    }
+                    else {
+                        // Not a matched var decl
+                        if (pendingVar && hasSemicolon) {
+                            // Handled above in pendingVar block
+                            newline = stepCode + newline;
+                        } else {
+                            newline = stepCode + line;
+                        }
+                    }
                 }
             }
 
             instrumentedFn += newline + '\n';
-        } else {
+        }
+        else {
             instrumentedFn += line + '\n';
         }
     }

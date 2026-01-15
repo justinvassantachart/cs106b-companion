@@ -63,9 +63,9 @@ interface FrameGroup {
                 
                 <!-- Value Box -->
                 <div class="relative flex-1" [attr.id]="'var-' + v.name">
-                   <!-- Non-Pointer Value -->
-                   <div *ngIf="!v.targetAddr" class="bg-background border border-input px-2 py-1 rounded text-xs font-mono text-foreground shadow-sm truncate">
-                     {{v.value}}
+                   <!-- Value Rendering (Table or Box) -->
+                   <div *ngIf="!v.targetAddr" class="bg-background border border-input px-2 py-1 rounded text-xs font-mono text-foreground shadow-sm overflow-x-auto"
+                        [innerHTML]="parseVariableValue(v.addr, v.value)">
                    </div>
 
                    <!-- Pointer Dot (Source of Arrow) -->
@@ -95,7 +95,7 @@ interface FrameGroup {
               
               <!-- Content with potential pointers -->
               <div class="font-mono text-xs text-card-foreground break-words mt-2 whitespace-pre-wrap"
-                   [innerHTML]="obj.parsedHtml || obj.value"></div>
+                   [innerHTML]="parseVariableValue(obj.addr, obj.value)"></div>
            </div>
         </div>
         
@@ -177,7 +177,7 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
             addr: v.addr,
             value: v.value,
             type: v.type,
-            parsedHtml: this.parseHeapValue(v.addr, v.value)
+            parsedHtml: this.parseVariableValue(v.addr, v.value)
           });
         }
       } else {
@@ -206,27 +206,42 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
     this.stackVars = this.variables.filter(v => v.frame !== 'heap');
   }
 
-  parseHeapValue(objAddr: string, val: string): SafeHtml {
-    // Attempt to parse as JSON (struct)
-    if (val.trim().startsWith('{')) {
+  parseVariableValue(objAddr: string, val: string): SafeHtml {
+    // Attempt to parse structured data
+    const trimmed = val.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
         const parsed = JSON.parse(val);
-        // It's a struct! Build a table.
         let html = `<table class="w-full text-xs border-collapse">`;
-        for (const [key, value] of Object.entries(parsed)) {
-          // Value is explicitly a string from our generator
-          const displayVal = this.processValueString(objAddr, String(value));
-          html += `
+
+        if (Array.isArray(parsed)) {
+          // Array Rendering (Vector/Set)
+          parsed.forEach((item, i) => {
+            const displayVal = this.processValueString(objAddr, String(item));
+            html += `
               <tr class="border-b border-border last:border-0">
-                <td class="py-1 pr-2 font-bold text-muted-foreground w-1/3 align-top">${key}</td>
-                <td class="py-1 font-mono text-foreground break-all">${displayVal}</td>
+                <td class="py-1 pr-2 font-bold text-muted-foreground w-8 align-top text-right">${i}</td>
+                <td class="py-1 font-mono text-foreground break-all pl-2 border-l border-border/50">${displayVal}</td>
               </tr>
             `;
+          });
+        } else {
+          // Object Rendering (Struct/Map/Grid)
+          for (const [key, value] of Object.entries(parsed)) {
+            const displayVal = this.processValueString(objAddr, String(value));
+            html += `
+                <tr class="border-b border-border last:border-0">
+                  <td class="py-1 pr-2 font-bold text-muted-foreground w-1/3 align-top">${key}</td>
+                  <td class="py-1 font-mono text-foreground break-all pl-2 border-l border-border/50">${displayVal}</td>
+                </tr>
+              `;
+          }
         }
+
         html += `</table>`;
         return this.sanitizer.bypassSecurityTrustHtml(html);
       } catch (e) {
-        // Fallback if bad JSON
+        // Fallback
       }
     }
 

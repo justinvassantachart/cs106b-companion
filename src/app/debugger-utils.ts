@@ -570,10 +570,14 @@ function processStatement(
     }
 
     // Recursively process bodies of control flow statements
+    // IMPORTANT: Only recurse into compound_statement (braced) bodies.
+    // For single-statement bodies (no braces), do NOT add DEBUG_STEP as it would
+    // break control flow semantics. E.g., `if (x) return 1;` would become
+    // `if (x) DEBUG_STEP(n); return 1;` which executes return unconditionally!
     if (child.type === 'if_statement') {
-        // Process the "then" branch (consequence)
+        // Process the "then" branch (consequence) - only if it has braces
         const consequence = childByFieldName(child, 'consequence');
-        if (consequence) {
+        if (consequence && consequence.type === 'compound_statement') {
             collectStatementsRecursively(consequence, source, statements);
         }
 
@@ -584,15 +588,19 @@ function processStatement(
             if (alternative.type === 'if_statement') {
                 // else if - process as a statement (will add DEBUG_STEP) and recurse
                 processStatement(alternative, source, statements);
-            } else {
+            } else if (alternative.type === 'compound_statement') {
+                // else with braces - recurse into it
                 collectStatementsRecursively(alternative, source, statements);
             }
+            // Single-statement else without braces - don't instrument
         }
     } else if (child.type === 'for_statement' || child.type === 'for_range_loop' || child.type === 'while_statement' || child.type === 'do_statement') {
         const body = childByFieldName(child, 'body');
-        if (body) {
+        // Only recurse if the body has braces (compound_statement)
+        if (body && body.type === 'compound_statement') {
             collectStatementsRecursively(body, source, statements);
         }
+        // Single-statement body without braces - don't instrument to avoid breaking semantics
     } else if (child.type === 'switch_statement') {
         const body = childByFieldName(child, 'body');
         if (body) {

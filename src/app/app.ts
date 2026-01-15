@@ -127,6 +127,13 @@ export class App implements AfterViewInit {
       this.worker = new Worker(new URL('./app.worker', import.meta.url));
 
       // Setup SharedArrayBuffer
+      if (typeof SharedArrayBuffer === 'undefined') {
+        this.outputLogs += "[ERROR] SharedArrayBuffer is not defined. This browser environment might be missing COOP/COEP headers required for high-performance threading.\n";
+        // Fallback or just error out cleanly
+        this.isDebugging = false;
+        this.isCompiling = false;
+        return;
+      }
       this.sharedBuffer = new Int32Array(new SharedArrayBuffer(4));
       this.sharedBuffer[0] = 0; // 0 = PAUSED, 1 = STEP, 2 = RUN
       this.worker.postMessage({ command: 'configure-debug', buffer: this.sharedBuffer.buffer });

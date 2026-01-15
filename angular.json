@@ -27,10 +27,16 @@
                 "glob": "**/*",
                 "input": "node_modules/monaco-editor/min/vs",
                 "output": "/assets/monaco/vs"
+              },
+              {
+                "glob": "**/*",
+                "input": "node_modules/monaco-editor/esm",
+                "output": "/assets/monaco-esm"
               }
             ],
             "styles": [
-              "src/styles.css"
+              "src/styles.css",
+              "node_modules/monaco-editor/min/vs/editor/editor.main.css"
             ],
             "loader": {
               ".ttf": "file"
@@ -65,7 +71,11 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "cs106b-companion:build:production"
+              "buildTarget": "cs106b-companion:build:production",
+              "headers": {
+                "Cross-Origin-Opener-Policy": "same-origin",
+                "Cross-Origin-Embedder-Policy": "require-corp"
+              }
             },
             "development": {
               "buildTarget": "cs106b-companion:build:development",

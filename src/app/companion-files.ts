@@ -161,10 +161,16 @@ int main() {
     cout << str1 << endl; // prints "asmineyay"
     cout << name << endl; // still prints "yasmine"
 
+    EXPECT_EQUAL(str1, "asmineyay");
+
     pigLatinReference(name);
     cout << name << endl; // now prints "asmineyay", since name is passed by reference here
+
+    EXPECT_EQUAL(name, "asmineyay");
     return 0;
 }
+
+
 
 
 `

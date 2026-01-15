@@ -25,36 +25,36 @@ export async function initTreeSitter(): Promise<void> {
     }
 
     initPromise = (async () => {
-        console.log('[Tree-sitter] Starting initialization...');
+        console.log('[Debugger] Starting initialization...');
 
         try {
             // Fetch WASM binary manually and pass it
-            console.log('[Tree-sitter] Fetching WASM binary...');
+            console.log('[Debugger] Fetching WASM binary...');
             const wasmResponse = await fetch('/wasm/web-tree-sitter.wasm');
             if (!wasmResponse.ok) {
                 throw new Error(`Failed to fetch web-tree-sitter.wasm: ${wasmResponse.status}`);
             }
             const wasmBinary = await wasmResponse.arrayBuffer();
-            console.log('[Tree-sitter] WASM binary fetched, size:', wasmBinary.byteLength);
+            console.log('[Debugger] WASM binary fetched, size:', wasmBinary.byteLength);
 
             await Parser.init({
                 locateFile: (scriptName: string) => {
-                    console.log('[Tree-sitter] locateFile called for:', scriptName);
+                    console.log('[Debugger] locateFile called for:', scriptName);
                     return `/wasm/${scriptName}`;
                 }
             });
-            console.log('[Tree-sitter] Parser.init() completed');
+            console.log('[Debugger] Parser.init() completed');
 
             parser = new Parser();
-            console.log('[Tree-sitter] Parser created, loading C++ language...');
+            console.log('[Debugger] Parser created, loading C++ language...');
 
             cppLanguage = await Language.load('/wasm/tree-sitter-cpp.wasm');
-            console.log('[Tree-sitter] C++ language loaded');
+            console.log('[Debugger] C++ language loaded');
 
             parser.setLanguage(cppLanguage);
-            console.log('[Tree-sitter] C++ parser initialized successfully');
+            console.log('[Debugger] C++ parser initialized successfully');
         } catch (error) {
-            console.error('[Tree-sitter] Initialization failed:', error);
+            console.error('[Debugger] Initialization failed:', error);
             throw error;
         }
     })();
@@ -627,14 +627,14 @@ function processStatement(
 
 export function instrumentCode(code: string): string {
     if (!parser || !cppLanguage) {
-        console.error('[Tree-sitter] Parser not initialized. Call initTreeSitter() first.');
+        console.error('[Debugger] Parser not initialized. Call initTreeSitter() first.');
         // Fall back to returning the code as-is (or could throw)
         return code;
     }
 
     const tree = parser.parse(code);
     if (!tree) {
-        console.error('[Tree-sitter] Failed to parse code.');
+        console.error('[Debugger] Failed to parse code.');
         return code;
     }
 

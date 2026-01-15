@@ -121,6 +121,11 @@ export function instrumentCode(code: string): string {
     let braceLevel = 0;
     let pendingVar: string | null = null; // Track multi-line declarations
 
+    // Stack to track control blocks for loop-back stepping
+    // Stores the line number of the loop header, or -1 for non-loop blocks
+    const controlStack: number[] = [];
+    let pendingForLine: number | null = null;
+
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
@@ -168,6 +173,9 @@ export function instrumentCode(code: string): string {
 
         if (braceLevel === 0 && currentFunction) {
             currentFunction = null;
+            // Clear tracking stacks when exiting function
+            controlStack.length = 0;
+            pendingForLine = null;
         }
 
         if (isFuncStart) {
@@ -264,7 +272,60 @@ export function instrumentCode(code: string): string {
                 }
             }
 
-            instrumentedFn += newline + '\n';
+            // --- Post-Processing: Loop Loopback Injection ---
+            // Scan the generated 'newline' for braces to maintain control flow stack
+            // and inject DEBUG_STEP() at end of for-loops.
+
+            const braceRegex = /[{}]/g;
+            let match;
+            let processedLine = "";
+            let lastIdx = 0;
+            // let foundOpenBrace = false; // logic inlined below
+
+            while ((match = braceRegex.exec(newline)) !== null) {
+                const char = match[0];
+                const idx = match.index;
+
+                processedLine += newline.substring(lastIdx, idx);
+
+                if (char === '{') {
+                    // foundOpenBrace = true;
+                    const preceding = newline.substring(lastIdx, idx);
+
+                    if (/\bfor\s*\(/.test(preceding)) {
+                        controlStack.push(i + 1);
+                        pendingForLine = null;
+                    } else if (pendingForLine !== null) {
+                        controlStack.push(pendingForLine);
+                        pendingForLine = null;
+                    } else {
+                        controlStack.push(-1);
+                    }
+
+                    processedLine += '{';
+                } else { // '}'
+                    const startLine = controlStack.pop();
+                    if (startLine && startLine > 0) {
+                        // Inject step back to loop header
+                        processedLine += ` DEBUG_STEP(${startLine}); }`;
+                    } else {
+                        processedLine += '}';
+                    }
+                }
+
+                lastIdx = idx + 1;
+            }
+            processedLine += newline.substring(lastIdx);
+
+            // Handle pending for loop (if start of line is for, and we didn't process its brace)
+            // We use 'line' or 'trimmed' to detect the original structure
+            if (trimmed.startsWith('for') && !processedLine.includes('{')) {
+                // If it doesn't have a brace on this line, mark it pending.
+                // Assuming well-formed 'for (...)'.
+                pendingForLine = i + 1;
+            }
+
+            instrumentedFn += processedLine + '\n';
         }
         else {
             instrumentedFn += line + '\n';

@@ -59,14 +59,6 @@ export function instrumentCode(code: string): string {
                     const ptrStar = fMatch[2]; // "*" or empty
                     const name = fMatch[3];    // "next"
 
-                    // If ptrStar is empty, type might be "Node*" in rawType?
-                    // But simplified regex assumes space before * or around name.
-                    // Let's refine: "Node* next" -> rawType="Node", ptrStar="*", name="next" ?
-                    // Actually my regex is: ([type]) \s* (\*?) \s* ([name])
-                    // "Node* next" -> "Node" "*" "next"
-                    // "Node *next" -> "Node" "*" "next"
-                    // "Node next"  -> "Node" ""  "next"
-
                     if (currentStruct) {
                         currentStruct.fields.push({
                             type: rawType,
@@ -85,10 +77,6 @@ export function instrumentCode(code: string): string {
     // This allows the debugger to print "{ \"val\": \"42\", \"next\": \"0x...\" }"
     let generatedPrinters = "";
     for (const s of structs) {
-        // Avoid re-definition if multiple structs have same name (unlikely in valid code but possible)
-        // Also check for conflict with existing operators? We assume student code doesn't have them if we are doing this.
-        // We use 'inline' or 'static' or just standard? Standard is fine for single file.
-
         generatedPrinters += `\n// Auto-generated JSON printer for struct ${s.name}\n`;
         generatedPrinters += `std::ostream& operator<<(std::ostream& os, const ${s.name}& obj) {\n`;
         generatedPrinters += `    os << "{";\n`;
@@ -101,12 +89,10 @@ export function instrumentCode(code: string): string {
             // If pointer, trigger recursive update
             if (field.isPointer && field.targetType) {
                 // _debug_update_heap_info is defined in stanford.h (shim)
-                // We pass the pointer and the type name
                 generatedPrinters += `    _debug_update_heap_info(obj.${field.name}, "${field.targetType}");\n`;
             }
 
-            // Value: We wrap in quotes to ensure valid JSON string values for simplicity
-            // This avoids issues with unquoted hex or complex types
+            // Value
             generatedPrinters += `    os << "\\"" << obj.${field.name} << "\\"";\n`;
         });
 
@@ -115,14 +101,122 @@ export function instrumentCode(code: string): string {
         generatedPrinters += `}\n`;
     }
 
-    // --- Pass 2: Instrument Function Bodies (Existing Logic) ---
-    // Track if we are inside a function body
+    // --- Pass 2 PRE-SCAN: Inject Comma Steps into For Loops ---
+    // We do this via a separate pass or just careful lookahead. 
+    // Let's modify 'lines' in place before the main instrumentation loop.
+    // This simplifies the main loop which just thinks it's processing normal code (with extra commas).
+
+    const handledLoops = new Set<number>(); // Set of line numbers (1-indexed) where 'for' starts
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim().startsWith('for') && line.includes('(')) {
+            // Attempt to parse standard for loop
+            let buffer = "";
+            let k = i;
+            let foundEnd = false;
+            let pCount = 0;
+            let endCol = -1;
+
+            // Collect header until ')' that closes the for loop
+            while (k < lines.length) {
+                const txt = lines[k];
+                const startOff = (k === i) ? txt.indexOf('(') : 0;
+
+                for (let c = startOff; c < txt.length; c++) {
+                    if (txt[c] === '(') pCount++;
+                    else if (txt[c] === ')') {
+                        pCount--;
+                        if (pCount === 0 && (k > i || c > txt.indexOf('('))) { // Ensure we closed the main paren
+                            foundEnd = true;
+                            endCol = c;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundEnd) break;
+                k++;
+            }
+
+            if (foundEnd) {
+                // Analyze valid range i..k
+                // We construct the full header string to check for semicolons
+                let fullHeader = "";
+                // Re-read carefully
+                for (let r = i; r <= k; r++) {
+                    fullHeader += lines[r]; // Simplified, preserving newlines might be needed for char counting if we were strict
+                }
+                // Check semicolons in the part inside parens
+                // Locate the bounding parens in `fullHeader`
+                const firstParen = fullHeader.indexOf('(');
+                const lastParen = fullHeader.lastIndexOf(')'); // Approximate if there are trailing chars, but we want the matching one.
+
+                // Let's use the `k` and `endCol` to find the exact injection point in `lines[k]`.
+                // Verify semicolons:
+                let semiCount = 0;
+                let d = 0;
+                // We can't easily count semicolons across multiple lines without reconstructing correctly.
+                // Let's just trust that if we found a balanced paren group starting with 'for', it's the header.
+                // We need to count ';' at depth 0.
+
+                // Re-read carefully
+                let tempBuf = "";
+                for (let r = i; r <= k; r++) {
+                    let s = lines[r];
+                    if (r === k) s = s.substring(0, endCol + 1);
+                    tempBuf += s;
+                }
+
+                // Scan tempBuf
+                for (const ch of tempBuf) {
+                    if (ch === '(') d++;
+                    else if (ch === ')') d--;
+                    else if (ch === ';' && d === 1) semiCount++; // Depth 1 because we are inside `for ( ... )`
+                }
+
+                if (semiCount === 2) {
+                    // Standard Loop!
+                    // Inject `, DEBUG_STEP(i+1)` before the closing paren `)` at `lines[k][endCol]`.
+                    const targetLine = lines[k];
+
+                    let hasIncr = false;
+                    let p2 = tempBuf.lastIndexOf(')');
+                    let s2 = tempBuf.lastIndexOf(';', p2);
+                    if (s2 !== -1) {
+                        const incrPart = tempBuf.substring(s2 + 1, p2);
+                        if (incrPart.trim().length > 0) hasIncr = true;
+                    }
+
+                    // Try to extract loop variable for better visibility during pause
+                    let injection = "";
+                    const loopVarRegex = /for\s*\(\s*(?:(?:const\s+)?(?:unsigned\s+)?[\w:<>,*&]+\s+)?([a-zA-Z_][\w]*)\s*[=:]/;
+                    const loopVarMatch = tempBuf.match(loopVarRegex);
+                    const varName = loopVarMatch ? loopVarMatch[1] : null;
+
+                    if (varName) {
+                        injection = hasIncr ? `, _debug_loop_step(${i + 1}, "${varName}", ${varName})` : `_debug_loop_step(${i + 1}, "${varName}", ${varName})`;
+                    } else {
+                        injection = hasIncr ? `, DEBUG_STEP(${i + 1})` : `DEBUG_STEP(${i + 1})`;
+                    }
+
+                    const before = lines[k].substring(0, endCol);
+                    const after = lines[k].substring(endCol);
+                    lines[k] = before + injection + after;
+
+                    handledLoops.add(i + 1); // Mark this loop (start line) as handled
+                }
+            }
+        }
+    }
+
+
+    // --- Pass 2: Main Instrumentation ---
+    // (Existing logic, but using handledLoops to suppress default loopback)
+
     let currentFunction: string | null = null;
     let braceLevel = 0;
-    let pendingVar: string | null = null; // Track multi-line declarations
-
-    // Stack to track control blocks for loop-back stepping
-    // Stores the line number of the loop header, or -1 for non-loop blocks
+    let pendingVar: string | null = null;
     const controlStack: number[] = [];
     let pendingForLine: number | null = null;
 
@@ -130,15 +224,9 @@ export function instrumentCode(code: string): string {
         const line = lines[i];
 
         // --- 1. Detect Function Start ---
-        // Only look for function start if we are at top level (braceLevel 0)
-        // Regex: ReturnType Name(Args) {
-        // Exclude kqdws: if, while, for, switch, catch
-        // We match simplified pattern
         const funcStartRegex = /^\s*(?:[\w<>:&*]+)\s+([\w]+)\s*\([^)]*\)\s*\{/;
         const match = line.match(funcStartRegex);
-
         const keywords = ['if', 'while', 'for', 'switch', 'catch', 'else', 'struct', 'class'];
-
         let isFuncStart = false;
 
         if (braceLevel === 0 && match && !keywords.includes(match[1])) {
@@ -147,9 +235,9 @@ export function instrumentCode(code: string): string {
             isFuncStart = true;
             instrumentedFn += line + '\n';
             instrumentedFn += `    DBG_FUNC(${funcName});\n`;
-            instrumentedFn += `    DEBUG_STEP(${i + 1});\n`; // Stop at function signature to show frame init
+            instrumentedFn += `    DEBUG_STEP(${i + 1});\n`;
 
-            // --- Instrument Parameters ---
+            // Instrument Params 
             const argsContent = line.substring(line.indexOf('(') + 1, line.lastIndexOf(')'));
             if (argsContent.trim()) {
                 const args = argsContent.split(',');
@@ -164,16 +252,13 @@ export function instrumentCode(code: string): string {
             }
         }
 
-        // Track braces
         const openBraces = (line.match(/{/g) || []).length;
         const closeBraces = (line.match(/}/g) || []).length;
-
         braceLevel += openBraces;
         braceLevel -= closeBraces;
 
         if (braceLevel === 0 && currentFunction) {
             currentFunction = null;
-            // Clear tracking stacks when exiting function
             controlStack.length = 0;
             pendingForLine = null;
         }
@@ -183,70 +268,54 @@ export function instrumentCode(code: string): string {
         }
 
         if (currentFunction) {
-            // --- 2. Instrument variable declarations & Steps in function Body ---
             let newline = line;
             const trimmed = line.trim();
 
             if (trimmed.length > 0 && !trimmed.startsWith('//')) {
-                // Regex updated to include comma in type [\\w:<>,\\s*&]*?
                 const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z_:][\w:<>, \t*&]*?)\s+(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
                 const varMatch = line.match(varDeclRegex);
                 const hasSemicolon = trimmed.includes(';');
                 const isForLoop = trimmed.startsWith('for');
 
-                // Determine if we should add a DEBUG_STEP
-                // Step on: semicolon lines, or vars (non-keywords), or for-loops, or if/while/switch
                 const isControlFlow = (trimmed.startsWith('if') || trimmed.startsWith('while') || trimmed.startsWith('switch')) && !trimmed.startsWith('else');
                 let shouldStep = hasSemicolon || (varMatch && !isForLoop) || isControlFlow;
 
-                // Skip trailing braces to avoid { ... }; }; blocks inside initializers
                 if (trimmed.startsWith('}') && !hasSemicolon) {
                     shouldStep = false;
                 }
 
-                // Multi-line declaration tracking
                 if (pendingVar) {
                     if (hasSemicolon) {
-                        // For multi-line init close, we must NOT prepend DEBUG_STEP (syntax error inside brackets)
-                        // Instead, we append it after the semicolon.
                         const trackCode = ` DBG_TRACK(${pendingVar}, ${pendingVar});`;
                         const stepCode = `DEBUG_STEP(${i + 1}); `;
                         newline = line.replace(';', ';' + trackCode + ' ' + stepCode);
-
-                        pendingVar = null; // Clear
-
-                        // We handled the step/track manually, so don't run generic logic
+                        pendingVar = null;
                         shouldStep = false;
                     }
                 }
 
                 if (shouldStep || isForLoop) {
                     const stepCode = `DEBUG_STEP(${i + 1}); `;
-
                     const lineStart = trimmed.split(/[ \t(]/)[0];
                     const ignoreStarts = ['typedef', 'using', 'template', 'return', 'co_return', 'co_yield', 'delete', 'throw'];
                     const varKeywords = ['return', 'if', 'else', 'while', 'for', 'cout', 'cin', 'endl', 'break', 'continue', 'case', 'switch', 'default', 'true', 'false', 'nullptr'];
 
                     if (varMatch && !varKeywords.includes(varMatch[1]) && !ignoreStarts.includes(lineStart)) {
                         const varName = varMatch[1];
-
-                        // Only add tracking if it's a complete line or we are sure it's not breaking an init list
                         if (hasSemicolon) {
                             if (!pendingVar) {
                                 const trackCode = ` DBG_TRACK(${varName}, ${varName});`;
                                 newline = stepCode + line.replace(';', ';' + trackCode);
                             } else {
-                                // pendingVar was resolved above, just prepend stepCode
                                 newline = stepCode + newline;
                             }
                         } else {
-                            // No semicolon? Multi-line init start!
                             pendingVar = varName;
                             newline = stepCode + line;
                         }
                     }
                     else if (isForLoop) {
-                        // Specific parsing for for loops
+                        // Original Logic: Add TRACK for loop var
                         let loopVarName = null;
                         const forVarRegex = /for\s*\(\s*(?:const\s+)?([\w:<>,*&\s]+?)\s+([a-zA-Z_][\w]*)\s*[=:]/;
                         const forMatch = trimmed.match(forVarRegex);
@@ -261,9 +330,7 @@ export function instrumentCode(code: string): string {
                         }
                     }
                     else {
-                        // Not a matched var decl
                         if (pendingVar && hasSemicolon) {
-                            // Handled above in pendingVar block
                             newline = stepCode + newline;
                         } else {
                             newline = stepCode + line;
@@ -272,31 +339,36 @@ export function instrumentCode(code: string): string {
                 }
             }
 
-            // --- Post-Processing: Loop Loopback Injection ---
-            // Scan the generated 'newline' for braces to maintain control flow stack
-            // and inject DEBUG_STEP() at end of for-loops.
-
+            // Loopback Injection
             const braceRegex = /[{}]/g;
             let match;
             let processedLine = "";
             let lastIdx = 0;
-            // let foundOpenBrace = false; // logic inlined below
 
             while ((match = braceRegex.exec(newline)) !== null) {
                 const char = match[0];
                 const idx = match.index;
-
                 processedLine += newline.substring(lastIdx, idx);
 
                 if (char === '{') {
-                    // foundOpenBrace = true;
                     const preceding = newline.substring(lastIdx, idx);
 
                     if (/\bfor\s*\(/.test(preceding)) {
-                        controlStack.push(i + 1);
+                        // It matches a for loop on THIS line.
+                        // Was this loop handled?
+                        if (handledLoops.has(i + 1)) {
+                            controlStack.push(-1); // Handled, suppress loopback
+                        } else {
+                            controlStack.push(i + 1);
+                        }
                         pendingForLine = null;
                     } else if (pendingForLine !== null) {
-                        controlStack.push(pendingForLine);
+                        // Brace for a previous for loop line
+                        if (handledLoops.has(pendingForLine)) {
+                            controlStack.push(-1);
+                        } else {
+                            controlStack.push(pendingForLine);
+                        }
                         pendingForLine = null;
                     } else {
                         controlStack.push(-1);
@@ -306,22 +378,16 @@ export function instrumentCode(code: string): string {
                 } else { // '}'
                     const startLine = controlStack.pop();
                     if (startLine && startLine > 0) {
-                        // Inject step back to loop header
                         processedLine += ` DEBUG_STEP(${startLine}); }`;
                     } else {
                         processedLine += '}';
                     }
                 }
-
                 lastIdx = idx + 1;
             }
             processedLine += newline.substring(lastIdx);
 
-            // Handle pending for loop (if start of line is for, and we didn't process its brace)
-            // We use 'line' or 'trimmed' to detect the original structure
             if (trimmed.startsWith('for') && !processedLine.includes('{')) {
-                // If it doesn't have a brace on this line, mark it pending.
-                // Assuming well-formed 'for (...)'.
                 pendingForLine = i + 1;
             }
 

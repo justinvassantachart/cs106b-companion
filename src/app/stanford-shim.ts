@@ -1010,7 +1010,13 @@ extern "C" {
         cout << "[DEBUG:STACK:END]" << endl;
     }
 }
-#define DEBUG_STEP(line) { _debug_dump_vars(); _debug_wait(line); }
+template <typename T>
+void _debug_loop_step(int line, const char* name, const T& val) {
+    Tracer<T> t(name, val);
+    _debug_dump_vars();
+    _debug_wait(line);
+}
+#define DEBUG_STEP(line) (_debug_dump_vars(), _debug_wait(line))
 #define DBG_TRACK(name, val) Tracer _dbg_##name(#name, val)
 #define DBG_FUNC(name) FuncTracker _dbg_func_##name(#name)
 `;

@@ -181,13 +181,15 @@ export function instrumentCode(code: string): string {
 
             if (trimmed.length > 0 && !trimmed.startsWith('//')) {
                 // Regex updated to include comma in type [\\w:<>,\\s*&]*?
-                const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z_:][\w:<>,\\s*&]*?)\s+(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
+                const varDeclRegex = /^\s*(?:const\s+)?(?:[a-zA-Z_:][\w:<>, \t*&]*?)\s+(?:[*&]+\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;|\(|\{)/;
                 const varMatch = line.match(varDeclRegex);
                 const hasSemicolon = trimmed.includes(';');
                 const isForLoop = trimmed.startsWith('for');
 
                 // Determine if we should add a DEBUG_STEP
-                let shouldStep = hasSemicolon || (varMatch && !isForLoop);
+                // Step on: semicolon lines, or vars (non-keywords), or for-loops, or if/while/switch
+                const isControlFlow = (trimmed.startsWith('if') || trimmed.startsWith('while') || trimmed.startsWith('switch')) && !trimmed.startsWith('else');
+                let shouldStep = hasSemicolon || (varMatch && !isForLoop) || isControlFlow;
 
                 // Skip trailing braces to avoid { ... }; }; blocks inside initializers
                 if (trimmed.startsWith('}') && !hasSemicolon) {

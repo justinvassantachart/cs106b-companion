@@ -206,10 +206,64 @@ string _json_val(const T& val) {
 }
 
 // ... existing stream operators for Vector, Grid, etc ...
+template <typename T>
+class Stack {
+private:
+    vector<T> _v;
+public:
+    Stack() {}
+    Stack(std::initializer_list<T> list) : _v(list) {}
+    int size() const { return _v.size(); }
+    bool isEmpty() const { return _v.empty(); }
+    void clear() { _v.clear(); }
+    void push(T val) { _v.push_back(val); }
+    T pop() { T val = _v.back(); _v.pop_back(); return val; }
+    T peek() const { return _v.back(); }
+    
+    string toString() const {
+        stringstream ss; ss << "{";
+        for(size_t i=0; i<_v.size(); i++) ss << _v[i] << (i < _v.size()-1 ? ", " : "");
+        ss << "}"; return ss.str();
+    }
+    string toDebugString() const {
+        stringstream ss; ss << "[";
+        for(size_t i=0; i<_v.size(); i++) ss << _json_val(_v[i]) << (i < _v.size()-1 ? ", " : "");
+        ss << "]"; return ss.str();
+    }
+};
+
+template <typename T>
+class Queue {
+private:
+    deque<T> _q;
+public:
+    Queue() {}
+    Queue(std::initializer_list<T> list) : _q(list) {}
+    int size() const { return _q.size(); }
+    bool isEmpty() const { return _q.empty(); }
+    void clear() { _q.clear(); }
+    void enqueue(T val) { _q.push_back(val); }
+    T dequeue() { T val = _q.front(); _q.pop_front(); return val; }
+    T peek() const { return _q.front(); }
+    
+    string toString() const {
+        stringstream ss; ss << "{";
+        for(size_t i=0; i<_q.size(); i++) ss << _q[i] << (i < _q.size()-1 ? ", " : "");
+        ss << "}"; return ss.str();
+    }
+    string toDebugString() const {
+        stringstream ss; ss << "[";
+        for(size_t i=0; i<_q.size(); i++) ss << _json_val(_q[i]) << (i < _q.size()-1 ? ", " : "");
+        ss << "]"; return ss.str();
+    }
+};
+
 template <typename T> ostream& operator<<(ostream& os, const Vector<T>& v) { os << v.toString(); return os; }
 template <typename T> ostream& operator<<(ostream& os, const Grid<T>& g) { os << g.toString(); return os; }
 template <typename T> ostream& operator<<(ostream& os, const Set<T>& s) { os << s.toString(); return os; }
 template <typename K, typename V> ostream& operator<<(ostream& os, const Map<K, V>& m) { os << m.toString(); return os; }
+template <typename T> ostream& operator<<(ostream& os, const Stack<T>& s) { os << s.toString(); return os; }
+template <typename T> ostream& operator<<(ostream& os, const Queue<T>& q) { os << q.toString(); return os; }
 
 // --- REST OF SHIM ---
 

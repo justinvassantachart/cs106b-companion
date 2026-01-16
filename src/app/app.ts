@@ -166,12 +166,12 @@ export class App implements AfterViewInit {
 
     // Initialize Tree-sitter if not already done
     if (!isTreeSitterReady()) {
-      this._liveOutputLogs += "[Initializing C++ parser...]\n";
+      this._liveOutputLogs += "[Initializing C++ Debugger...]\n";
       try {
         await initTreeSitter();
-        this._liveOutputLogs += "[Parser ready.]\n";
+        this._liveOutputLogs += "[Debugger ready.]\n";
       } catch (e: any) {
-        this._liveOutputLogs += `[ERROR] Failed to initialize parser: ${e.message}\n`;
+        this._liveOutputLogs += `[ERROR] Failed to initialize debugger: ${e.message}\n`;
         this.isDebugging = false;
         this.isCompiling = false;
         return;

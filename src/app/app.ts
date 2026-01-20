@@ -59,6 +59,29 @@ export class App implements AfterViewInit {
     return this._liveOutputLogs;
   }
 
+  // Processed output for display - strips ANSI codes and adds error highlighting
+  get processedOutputHtml(): string {
+    const raw = this.outputLogs;
+    // Strip ANSI escape codes
+    const stripped = raw.replace(/\x1b\[[0-9;]*m/g, '').replace(/\[\d+(?:;\d+)*m/g, '');
+
+    // Split into lines and wrap errors in spans
+    const lines = stripped.split('\n');
+    const processed = lines.map(line => {
+      const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // Check if this line contains an error
+      if (/error:/i.test(line) || /Error:/i.test(line) || line.includes('[!ERROR]')) {
+        return `<span class="text-destructive font-bold">${escaped}</span>`;
+      }
+      // Warning highlighting
+      if (/warning:/i.test(line)) {
+        return `<span class="text-yellow-500">${escaped}</span>`;
+      }
+      return escaped;
+    });
+    return processed.join('\n');
+  }
+
   get debugVars() {
     if (this.historyIndex !== -1 && this.history[this.historyIndex]) {
       return this.history[this.historyIndex].variables;

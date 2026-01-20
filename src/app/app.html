@@ -137,7 +137,8 @@
         <!-- Console -->
         <div class="w-full h-full overflow-auto p-4 font-mono text-xs leading-relaxed custom-scrollbar"
           *ngIf="activeTab === 'console'">
-          <pre *ngIf="outputLogs" class="text-foreground whitespace-pre-wrap break-words">{{ outputLogs }}</pre>
+          <pre *ngIf="outputLogs" class="text-foreground whitespace-pre-wrap break-words"
+            [innerHTML]="processedOutputHtml"></pre>
           <div *ngIf="!outputLogs" class="text-muted-foreground italic select-none">Ready to run... <br>Click Run to
             start.
           </div>

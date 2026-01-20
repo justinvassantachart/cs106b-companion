@@ -106,6 +106,7 @@ export class App implements AfterViewInit {
   }
   isDebugging = false;
   isPaused = false;
+  isFinished = false;  // Program completed but still browsable
   isCompiling = false;
   worker: Worker | null = null;
   testResults: { pass: boolean; expression: string; expected?: string; actual?: string }[] = [];
@@ -291,12 +292,19 @@ export class App implements AfterViewInit {
         } else if (data.type === 'finished') {
           this.ngZone.run(() => {
             this._liveOutputLogs += "\n[FINISHED]";
-            this.isDebugging = false;
+            // Keep isDebugging true so UI stays in debug mode
+            // User can still browse history and must click Stop to exit
+            this.isFinished = true;
             this.isCompiling = false;
             this.isPaused = false;
-            this._liveDebugVars = []; // Clear vars
+            // Don't clear vars - keep last state visible
             if (this.editor) this.editor.setExecutionLine(null);
-            this._liveCurrentLine = null;
+            // Jump to last history item so user can step back through execution
+            if (this.history.length > 0) {
+              this.historyIndex = this.history.length - 1;
+              this.updateEditorState();
+            }
+            this.cdr.detectChanges();
           });
         } else if (data.type === 'debug-paused') {
           this.ngZone.run(() => {
@@ -386,6 +394,7 @@ export class App implements AfterViewInit {
     this.isDebugging = false;
     this.isCompiling = false;
     this.isPaused = false;
+    this.isFinished = false;
     this._liveDebugVars = [];
     this._liveCurrentLine = null;
     this.history = [];

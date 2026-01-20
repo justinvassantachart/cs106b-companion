@@ -26,11 +26,15 @@
             <lucide-icon [img]="isDark ? icons.Moon : icons.Sun" class="w-5 h-5"></lucide-icon>
           </button>
 
-          <button (click)="startDebugger()" [disabled]="isDebugging"
+          <button (click)="isPaused ? runAll() : startDebugger()" [disabled]="isDebugging && !isPaused && !isCompiling"
             class="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm min-w-[80px] justify-center active:scale-95 disabled:active:scale-100">
-            <ng-container *ngIf="!isCompiling">
+            <ng-container *ngIf="!isCompiling && !isPaused">
               <lucide-icon [img]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
               Run
+            </ng-container>
+            <ng-container *ngIf="!isCompiling && isPaused">
+              <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
+              Continue
             </ng-container>
             <ng-container *ngIf="isCompiling">
               <lucide-icon [img]="icons.Loader2" class="w-4 h-4 animate-spin"></lucide-icon>

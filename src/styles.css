@@ -82,6 +82,10 @@
         --input: hsl(240 5.9% 90%);
         --ring: hsl(240 5.9% 10%);
         --radius: 0.5rem;
+
+        /* Sash (resizer) variables - VS Code inspired */
+        --sash-size: 6px;
+        --sash-hover-size: 4px;
     }
 
     .dark {

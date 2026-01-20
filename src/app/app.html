@@ -91,8 +91,9 @@
       </div>
     </div>
 
-    <!-- Horizontal Resize Handle -->
-    <app-resize-handle direction="horizontal" (resize)="onBottomPanelResize($event)"></app-resize-handle>
+    <!-- Horizontal Sash (VS Code-style resize handle) -->
+    <app-sash class="sash-container-horizontal" orientation="horizontal" (sashStart)="onBottomSashStart()"
+      (sashChange)="onBottomSashChange($event)"></app-sash>
 
     <!-- BOTTOM PANEL: Debugger Tools (Dynamic Height) -->
     <div class="flex flex-col bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.1)] z-10"
@@ -169,7 +170,7 @@
         <!-- Variables (Full Width) -->
         <div class="w-full h-full flex flex-row" *ngIf="activeTab === 'variables'">
           <!-- Call Stack Sidebar (retained inside visualizer view effectively) -->
-          <div class="w-64 bg-muted/20 border-r border-border flex flex-col shrink-0">
+          <div class="bg-muted/20 border-r border-border flex flex-col shrink-0" [style.width.px]="callStackWidth">
             <div
               class="px-3 py-2 bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Call Stack
@@ -184,6 +185,10 @@
               </div>
             </div>
           </div>
+
+          <!-- Vertical Sash (VS Code-style resize handle) -->
+          <app-sash class="sash-container-vertical" orientation="vertical" (sashStart)="onCallStackSashStart()"
+            (sashChange)="onCallStackSashChange($event)"></app-sash>
 
           <!-- Main Visualizer -->
           <app-variable-viz [variables]="debugVars" class="flex-1 min-h-0 bg-background"></app-variable-viz>

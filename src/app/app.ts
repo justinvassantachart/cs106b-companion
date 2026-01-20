@@ -7,7 +7,7 @@ import { CompanionFile, FILES } from './companion-files';
 import { instrumentCode, initTreeSitter, isTreeSitterReady } from './debugger-utils';
 import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
 import { VariableVizComponent } from './components/variable-viz/variable-viz.component';
-import { ResizeHandleComponent } from './components/resize-handle/resize-handle.component';
+import { SashComponent } from './components/sash/sash.component';
 import { AppSidebar } from './app-sidebar';
 import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
 
@@ -27,7 +27,7 @@ interface DebuggerState {
     LucideAngularModule,
     MonacoEditorComponent,
     VariableVizComponent,
-    ResizeHandleComponent,
+    SashComponent,
     AppSidebar,
     HlmSidebarImports
   ],
@@ -99,6 +99,10 @@ export class App implements AfterViewInit {
   readonly MIN_BOTTOM_HEIGHT = 100;
   readonly MAX_BOTTOM_HEIGHT_RATIO = 0.8; // 80% of viewport
 
+  callStackWidth = 256; // pixels (16rem default)
+  readonly MIN_CALL_STACK_WIDTH = 150;
+  readonly MAX_CALL_STACK_WIDTH = 400;
+
   // Icon imports for template
   readonly icons = {
     Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight
@@ -129,11 +133,41 @@ export class App implements AfterViewInit {
     }
   }
 
-  onBottomPanelResize(delta: number) {
+  // Track previous position during resize for calculating deltas
+  private lastSashY = 0;
+  private lastSashX = 0;
+
+  onBottomSashStart() {
+    this.lastSashY = 0;
+  }
+
+  onBottomSashChange(event: { startY: number; currentY: number }) {
+    const delta = this.lastSashY === 0
+      ? event.currentY - event.startY
+      : event.currentY - (event.startY + this.lastSashY);
+
+    this.lastSashY = event.currentY - event.startY;
+
     // Negative delta = dragging up = increase bottom panel height
     const newHeight = this.bottomPanelHeight - delta;
     const maxHeight = window.innerHeight * this.MAX_BOTTOM_HEIGHT_RATIO;
     this.bottomPanelHeight = Math.max(this.MIN_BOTTOM_HEIGHT, Math.min(newHeight, maxHeight));
+  }
+
+  onCallStackSashStart() {
+    this.lastSashX = 0;
+  }
+
+  onCallStackSashChange(event: { startX: number; currentX: number }) {
+    const delta = this.lastSashX === 0
+      ? event.currentX - event.startX
+      : event.currentX - (event.startX + this.lastSashX);
+
+    this.lastSashX = event.currentX - event.startX;
+
+    // Positive delta = dragging right = increase width
+    const newWidth = this.callStackWidth + delta;
+    this.callStackWidth = Math.max(this.MIN_CALL_STACK_WIDTH, Math.min(newWidth, this.MAX_CALL_STACK_WIDTH));
   }
 
   selectFile(file: CompanionFile) {

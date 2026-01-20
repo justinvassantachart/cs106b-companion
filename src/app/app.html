@@ -91,8 +91,12 @@
       </div>
     </div>
 
-    <!-- BOTTOM PANEL: Debugger Tools (Height 45vh) -->
-    <div class="h-[45vh] flex flex-col bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.1)] z-10">
+    <!-- Horizontal Resize Handle -->
+    <app-resize-handle direction="horizontal" (resize)="onBottomPanelResize($event)"></app-resize-handle>
+
+    <!-- BOTTOM PANEL: Debugger Tools (Dynamic Height) -->
+    <div class="flex flex-col bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.1)] z-10"
+      [style.height.px]="bottomPanelHeight">
 
       <!-- Tabs Header -->
       <div class="flex items-center border-b border-border px-4 bg-muted/50">

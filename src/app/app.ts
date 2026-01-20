@@ -7,6 +7,7 @@ import { CompanionFile, FILES } from './companion-files';
 import { instrumentCode, initTreeSitter, isTreeSitterReady } from './debugger-utils';
 import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
 import { VariableVizComponent } from './components/variable-viz/variable-viz.component';
+import { ResizeHandleComponent } from './components/resize-handle/resize-handle.component';
 import { AppSidebar } from './app-sidebar';
 import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
 
@@ -26,6 +27,7 @@ interface DebuggerState {
     LucideAngularModule,
     MonacoEditorComponent,
     VariableVizComponent,
+    ResizeHandleComponent,
     AppSidebar,
     HlmSidebarImports
   ],
@@ -92,6 +94,11 @@ export class App implements AfterViewInit {
   // Debugging state
   breakpoints: Set<number> = new Set();
 
+  // Panel sizing
+  bottomPanelHeight = 300; // pixels
+  readonly MIN_BOTTOM_HEIGHT = 100;
+  readonly MAX_BOTTOM_HEIGHT_RATIO = 0.8; // 80% of viewport
+
   // Icon imports for template
   readonly icons = {
     Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight
@@ -120,6 +127,13 @@ export class App implements AfterViewInit {
     } else {
       document.documentElement.classList.remove('dark');
     }
+  }
+
+  onBottomPanelResize(delta: number) {
+    // Negative delta = dragging up = increase bottom panel height
+    const newHeight = this.bottomPanelHeight - delta;
+    const maxHeight = window.innerHeight * this.MAX_BOTTOM_HEIGHT_RATIO;
+    this.bottomPanelHeight = Math.max(this.MIN_BOTTOM_HEIGHT, Math.min(newHeight, maxHeight));
   }
 
   selectFile(file: CompanionFile) {

@@ -51,10 +51,20 @@ interface FrameGroup {
       <div class="w-1/3 min-w-[200px] flex flex-col border-r border-border bg-card z-0 overflow-y-auto p-4 gap-4">
         <h3 class="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">Frames (Stack)</h3>
         
-        <div *ngFor="let group of frameGroups" class="bg-muted/10 rounded-lg p-3 shadow-sm border border-border">
-           <div class="text-xs font-semibold text-foreground mb-3 border-b border-border pb-1 flex justify-between">
-             <span>{{group.name}}</span>
-             <span *ngIf="group.name === currentFrameName" class="text-[10px] bg-primary/10 text-primary px-1.5 rounded-full">Active</span>
+        <div *ngFor="let group of frameGroups" 
+             class="rounded-lg p-3 shadow-sm border transition-all"
+             [class.bg-primary/5]="group.name === currentFrameName"
+             [class.border-primary/50]="group.name === currentFrameName"
+             [class.ring-2]="group.name === currentFrameName"
+             [class.ring-primary/20]="group.name === currentFrameName"
+             [class.bg-muted/10]="group.name !== currentFrameName"
+             [class.border-border]="group.name !== currentFrameName">
+           <div class="text-xs font-semibold text-foreground mb-3 border-b pb-1 flex justify-between items-center"
+                [class.border-primary/30]="group.name === currentFrameName"
+                [class.border-border]="group.name !== currentFrameName">
+             <span [class.text-primary]="group.name === currentFrameName">{{group.name}}</span>
+             <span *ngIf="group.name === currentFrameName" 
+                   class="text-[10px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">Active</span>
            </div>
            
            <div class="flex flex-col gap-3">
@@ -196,7 +206,14 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
       }
     });
 
-    this.frameGroups = Array.from(groups.entries()).map(([name, vars]) => ({ name, vars }));
+    // Sort frame groups so active frame appears first
+    this.frameGroups = Array.from(groups.entries())
+      .map(([name, vars]) => ({ name, vars }))
+      .sort((a, b) => {
+        if (a.name === this.currentFrameName) return -1;
+        if (b.name === this.currentFrameName) return 1;
+        return 0;
+      });
     // Filter out raw system allocations that confuse the user
     this.heapObjects = Array.from(heapMap.values()).filter(obj => {
       const isRaw = obj.type === 'raw';

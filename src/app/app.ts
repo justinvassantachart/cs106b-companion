@@ -10,6 +10,7 @@ import { VariableVizComponent } from './components/variable-viz/variable-viz.com
 import { SashComponent } from './components/sash/sash.component';
 import { AppSidebar } from './app-sidebar';
 import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
+import { HlmTooltipImports } from '@spartan-ng/helm/tooltip';
 
 interface DebuggerState {
   line: number | null;
@@ -29,7 +30,8 @@ interface DebuggerState {
     VariableVizComponent,
     SashComponent,
     AppSidebar,
-    HlmSidebarImports
+    HlmSidebarImports,
+    HlmTooltipImports
   ],
   templateUrl: './app.html',
   styleUrls: ['./app.css']
@@ -413,12 +415,23 @@ export class App implements AfterViewInit {
   }
 
   stepForward() {
-    if (this.historyIndex === -1) return; // Already at live
+    // If at live position (historyIndex === -1), execute next step
+    if (this.historyIndex === -1) {
+      // If paused at live, execute next line
+      if (this.isPaused && this.sharedBuffer) {
+        this.isPaused = false;
+        if (this.editor) this.editor.setExecutionLine(null);
+        Atomics.store(this.sharedBuffer, 0, 1); // 1 = STEP
+        Atomics.notify(this.sharedBuffer, 0);
+      }
+      return;
+    }
 
+    // Navigate forward in history
     if (this.historyIndex < this.history.length - 1) {
       this.historyIndex++;
     } else {
-      // Return to live
+      // At end of history, return to live
       this.historyIndex = -1;
     }
     this.updateEditorState();

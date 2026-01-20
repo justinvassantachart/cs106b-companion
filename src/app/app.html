@@ -20,21 +20,16 @@
         </div>
 
         <div class="flex items-center gap-2">
-          <button (click)="toggleTheme()"
-            class="p-2 mr-2 text-muted-foreground hover:text-foreground transition-all rounded-full hover:bg-muted active:scale-95"
-            title="Toggle Theme">
+          <button (click)="toggleTheme()" [hlmTooltipTrigger]="'Toggle Theme'"
+            class="p-2 mr-2 text-muted-foreground hover:text-foreground transition-all rounded-full hover:bg-muted active:scale-95">
             <lucide-icon [img]="isDark ? icons.Moon : icons.Sun" class="w-5 h-5"></lucide-icon>
           </button>
 
-          <button (click)="isPaused ? runAll() : startDebugger()" [disabled]="isDebugging && !isPaused && !isCompiling"
+          <button (click)="startDebugger()" [disabled]="isDebugging" [hlmTooltipTrigger]="'Run'"
             class="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm min-w-[80px] justify-center active:scale-95 disabled:active:scale-100">
-            <ng-container *ngIf="!isCompiling && !isPaused">
+            <ng-container *ngIf="!isCompiling">
               <lucide-icon [img]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
               Run
-            </ng-container>
-            <ng-container *ngIf="!isCompiling && isPaused">
-              <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
-              Continue
             </ng-container>
             <ng-container *ngIf="isCompiling">
               <lucide-icon [img]="icons.Loader2" class="w-4 h-4 animate-spin"></lucide-icon>
@@ -44,42 +39,34 @@
 
           <div class="h-6 w-px bg-border mx-2"></div>
 
-          <!-- History Back -->
+          <!-- Step Back -->
           <button (click)="stepBack()" [disabled]="history.length === 0 || (historyIndex !== -1 && historyIndex === 0)"
-            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
-            title="Step Back (View History)">
+            [hlmTooltipTrigger]="'Step Back'"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.StepBack" class="w-4 h-4"></lucide-icon>
           </button>
 
-          <!-- Execution Step -->
-          <button (click)="step()" [disabled]="!isPaused"
-            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
-            title="Step (Execute Next Line)">
-            <lucide-icon [img]="icons.CornerDownRight" class="w-4 h-4"></lucide-icon>
-          </button>
-
-          <!-- History Forward -->
-          <button (click)="stepForward()" [disabled]="historyIndex === -1"
-            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
-            title="Step Forward (View History)">
+          <!-- Step Forward (also executes next line when at live position) -->
+          <button (click)="stepForward()"
+            [disabled]="(historyIndex === -1 && !isPaused) || (history.length === 0 && !isPaused)"
+            [hlmTooltipTrigger]="historyIndex === -1 ? 'Execute Next Line' : 'Step Forward'"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.ArrowRight" class="w-4 h-4"></lucide-icon>
           </button>
 
           <div class="h-6 w-px bg-border mx-2"></div>
 
-          <button (click)="runAll()" [disabled]="!isDebugging"
-            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
-            title="Continue (Resume Execution)">
+          <button (click)="runAll()" [disabled]="!isDebugging" [hlmTooltipTrigger]="'Continue to End'"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
           </button>
 
-          <button (click)="pause()" [disabled]="!isDebugging || isPaused"
-            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100"
-            title="Pause">
+          <button (click)="pause()" [disabled]="!isDebugging || isPaused" [hlmTooltipTrigger]="'Pause'"
+            class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.Pause" class="w-4 h-4"></lucide-icon>
           </button>
 
-          <button (click)="stop()" [disabled]="!isDebugging"
+          <button (click)="stop()" [disabled]="!isDebugging" [hlmTooltipTrigger]="'Stop'"
             class="p-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md disabled:opacity-30 transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.Square" class="w-4 h-4 fill-current"></lucide-icon>
           </button>

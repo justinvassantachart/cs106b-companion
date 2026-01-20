@@ -142,13 +142,13 @@ export class App implements AfterViewInit {
   }
 
   onBottomSashChange(event: { startY: number; currentY: number }) {
-    const delta = this.lastSashY === 0
-      ? event.currentY - event.startY
-      : event.currentY - (event.startY + this.lastSashY);
+    // Calculate delta from last known position
+    const previousY = this.lastSashY || event.startY;
+    const delta = event.currentY - previousY;
+    this.lastSashY = event.currentY;
 
-    this.lastSashY = event.currentY - event.startY;
-
-    // Negative delta = dragging up = increase bottom panel height
+    // Dragging sash DOWN (positive delta) = DECREASE bottom panel height
+    // Dragging sash UP (negative delta) = INCREASE bottom panel height
     const newHeight = this.bottomPanelHeight - delta;
     const maxHeight = window.innerHeight * this.MAX_BOTTOM_HEIGHT_RATIO;
     this.bottomPanelHeight = Math.max(this.MIN_BOTTOM_HEIGHT, Math.min(newHeight, maxHeight));
@@ -159,13 +159,13 @@ export class App implements AfterViewInit {
   }
 
   onCallStackSashChange(event: { startX: number; currentX: number }) {
-    const delta = this.lastSashX === 0
-      ? event.currentX - event.startX
-      : event.currentX - (event.startX + this.lastSashX);
+    // Calculate delta from last known position
+    const previousX = this.lastSashX || event.startX;
+    const delta = event.currentX - previousX;
+    this.lastSashX = event.currentX;
 
-    this.lastSashX = event.currentX - event.startX;
-
-    // Positive delta = dragging right = increase width
+    // Dragging sash RIGHT (positive delta) = INCREASE call stack width
+    // Dragging sash LEFT (negative delta) = DECREASE call stack width
     const newWidth = this.callStackWidth + delta;
     this.callStackWidth = Math.max(this.MIN_CALL_STACK_WIDTH, Math.min(newWidth, this.MAX_CALL_STACK_WIDTH));
   }

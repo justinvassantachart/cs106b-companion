@@ -229,34 +229,15 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
         const parsed = JSON.parse(val);
-        let html = `<table class="w-full text-xs border-collapse">`;
 
-        if (Array.isArray(parsed)) {
-          // Array Rendering (Vector/Set)
-          parsed.forEach((item, i) => {
-            const displayVal = this.processValueString(objAddr, String(item));
-            html += `
-              <tr class="border-b border-border last:border-0">
-                <td class="py-1 pr-2 font-bold text-muted-foreground w-8 align-top text-right">${i}</td>
-                <td class="py-1 font-mono text-foreground break-all pl-2 border-l border-border/50">${displayVal}</td>
-              </tr>
-            `;
-          });
+        // Type detection and routing to specialized renderers
+        if (this.isGridType(parsed)) {
+          return this.sanitizer.bypassSecurityTrustHtml(this.renderGrid(objAddr, parsed));
+        } else if (Array.isArray(parsed)) {
+          return this.sanitizer.bypassSecurityTrustHtml(this.renderArray(objAddr, parsed));
         } else {
-          // Object Rendering (Struct/Map/Grid)
-          for (const [key, value] of Object.entries(parsed)) {
-            const displayVal = this.processValueString(objAddr, String(value));
-            html += `
-                <tr class="border-b border-border last:border-0">
-                  <td class="py-1 pr-2 font-bold text-muted-foreground w-1/3 align-top">${key}</td>
-                  <td class="py-1 font-mono text-foreground break-all pl-2 border-l border-border/50">${displayVal}</td>
-                </tr>
-              `;
-          }
+          return this.sanitizer.bypassSecurityTrustHtml(this.renderObject(objAddr, parsed));
         }
-
-        html += `</table>`;
-        return this.sanitizer.bypassSecurityTrustHtml(html);
       } catch (e) {
         // Fallback
       }
@@ -264,6 +245,87 @@ export class VariableVizComponent implements OnChanges, AfterViewChecked {
 
     // Fallback: Raw string processing
     return this.sanitizer.bypassSecurityTrustHtml(this.processValueString(objAddr, val));
+  }
+
+  /**
+   * Type detection: Check if the parsed object is a Grid
+   */
+  private isGridType(parsed: any): boolean {
+    return parsed && typeof parsed === 'object' && parsed.__type === 'Grid';
+  }
+
+  /**
+   * Render a Grid as a 2D table with row/column indices
+   */
+  private renderGrid(objAddr: string, grid: { rows: number; cols: number; data: any[][] }): string {
+    const { rows, cols, data } = grid;
+
+    let html = `<table class="w-full text-xs border-collapse font-mono">`;
+
+    // Column header row
+    html += `<tr class="bg-muted/30">`;
+    html += `<th class="w-8 h-7 text-center text-muted-foreground font-bold border border-border bg-muted/50"></th>`; // Corner cell
+    for (let c = 0; c < cols; c++) {
+      html += `<th class="w-10 h-7 text-center text-muted-foreground font-bold border border-border bg-muted/50">${c}</th>`;
+    }
+    html += `</tr>`;
+
+    // Data rows with row indices
+    for (let r = 0; r < rows; r++) {
+      html += `<tr>`;
+      // Row index cell
+      html += `<td class="w-8 h-7 text-center text-muted-foreground font-bold border border-border bg-muted/50">${r}</td>`;
+      // Data cells
+      const rowData = data[r] || [];
+      for (let c = 0; c < cols; c++) {
+        const cellValue = rowData[c] !== undefined ? rowData[c] : '';
+        const displayVal = this.processValueString(objAddr, String(cellValue));
+        html += `<td class="w-10 h-7 text-center text-foreground border border-border px-1">${displayVal}</td>`;
+      }
+      html += `</tr>`;
+    }
+
+    html += `</table>`;
+    return html;
+  }
+
+  /**
+   * Render an array (Vector/Set) with indexed rows
+   */
+  private renderArray(objAddr: string, arr: any[]): string {
+    let html = `<table class="w-full text-xs border-collapse">`;
+    arr.forEach((item, i) => {
+      const displayVal = this.processValueString(objAddr, String(item));
+      html += `
+        <tr class="border-b border-border last:border-0">
+          <td class="py-1 pr-2 font-bold text-muted-foreground w-8 align-top text-right">${i}</td>
+          <td class="py-1 font-mono text-foreground break-all pl-2 border-l border-border/50">${displayVal}</td>
+        </tr>
+      `;
+    });
+    html += `</table>`;
+    return html;
+  }
+
+  /**
+   * Render an object (Struct/Map) as key-value pairs
+   */
+  private renderObject(objAddr: string, obj: Record<string, any>): string {
+    let html = `<table class="w-full text-xs border-collapse">`;
+    for (const [key, value] of Object.entries(obj)) {
+      // Skip internal metadata fields
+      if (key.startsWith('__')) continue;
+
+      const displayVal = this.processValueString(objAddr, String(value));
+      html += `
+        <tr class="border-b border-border last:border-0">
+          <td class="py-1 pr-2 font-bold text-muted-foreground w-1/3 align-top">${key}</td>
+          <td class="py-1 font-mono text-foreground break-all pl-2 border-l border-border/50">${displayVal}</td>
+        </tr>
+      `;
+    }
+    html += `</table>`;
+    return html;
   }
 
   processValueString(objAddr: string, val: string): string {

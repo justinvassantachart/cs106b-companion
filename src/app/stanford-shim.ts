@@ -121,13 +121,14 @@ public:
         ss << "}"; return ss.str();
     }
     string toDebugString() const {
-        stringstream ss; ss << "{";
+        stringstream ss; 
+        ss << "{\\\"__type\\\": \\\"Grid\\\", \\\"rows\\\": " << _r << ", \\\"cols\\\": " << _c << ", \\\"data\\\": [";
         for(int i=0; i<_r; i++) {
-            ss << "\\\"Row " << i << "\\\": [";
+            ss << "[";
             for(int j=0; j<_c; j++) ss << _json_val(_g[i][j]) << (j<_c-1?", ":"");
             ss << "]" << (i<_r-1?", ":"");
         }
-        ss << "}"; return ss.str();
+        ss << "]}"; return ss.str();
     }
 };
 

@@ -459,7 +459,7 @@ export const SECTION_2_FILES: CompanionFile[] = [
  * Takes a grid of non-negative integers and an in-bounds grid location
  * and returns the maximum value in the row of that grid location.
  */
-int maxRow(Grid<int>& grid, int r, int c) {
+int maxRow(Grid<int>& grid, GridLocation loc) {
     // TODO: Implement this function
     return 0;
 }
@@ -469,9 +469,9 @@ int maxRow(Grid<int>& grid, int r, int c) {
  * -------------------------
  * Takes a grid and a grid location and returns the average of all the
  * values in the neighborhood of the grid location (N, S, E, W).
- * Return a truncated average.
+ * If the average is not an integer, return a truncated average.
  */
-int avgNeighborhood(Grid<int>& grid, int r, int c) {
+int avgNeighborhood(Grid<int>& grid, GridLocation loc) {
     // TODO: Implement this function
     return 0;
 }
@@ -479,15 +479,29 @@ int avgNeighborhood(Grid<int>& grid, int r, int c) {
 int main() {
     // Test maxRow
     Grid<int> g = { {1, 2, 3}, {4, 5, 6}, {7, 8, 9} };
-    EXPECT_EQUAL(maxRow(g, 1, 1), 6); // Row 1 is {4, 5, 6}, max is 6
-    EXPECT_EQUAL(maxRow(g, 0, 0), 3); // Row 0 is {1, 2, 3}, max is 3
+    GridLocation loc1(1, 1);
+    EXPECT_EQUAL(maxRow(g, loc1), 6); // Row 1 is {4, 5, 6}, max is 6
+    
+    GridLocation loc2(0, 0);
+    EXPECT_EQUAL(maxRow(g, loc2), 3); // Row 0 is {1, 2, 3}, max is 3
+    
+    GridLocation loc3(2, 0);
+    EXPECT_EQUAL(maxRow(g, loc3), 9); // Row 2 is {7, 8, 9}, max is 9
 
     // Test avgNeighborhood
-    // Neighbors of (1, 1) are 2, 8, 4, 6. Sum = 20, Count = 4, Avg = 5
-    // Neighbors: N(0,1)=2, S(2,1)=8, W(1,0)=4, E(1,2)=6
-    EXPECT_EQUAL(avgNeighborhood(g, 1, 1), 5);
+    // Neighbors of (1, 1) are N(0,1)=2, S(2,1)=8, W(1,0)=4, E(1,2)=6
+    // Sum = 20, Count = 4, Avg = 5
+    EXPECT_EQUAL(avgNeighborhood(g, loc1), 5);
+    
+    // Neighbors of (0, 0) are S(1,0)=4, E(0,1)=2 (only 2 neighbors)
+    // Sum = 6, Count = 2, Avg = 3
+    EXPECT_EQUAL(avgNeighborhood(g, loc2), 3);
+    
+    // Neighbors of (1, 0) are N(0,0)=1, S(2,0)=7, E(1,1)=5 (only 3 neighbors)
+    // Sum = 13, Count = 3, Avg = 4 (truncated)
+    GridLocation loc4(1, 0);
+    EXPECT_EQUAL(avgNeighborhood(g, loc4), 4);
 
-    // Add more tests!
     return 0;
 }
 `
@@ -499,42 +513,72 @@ int main() {
         description: 'Practice with Maps and Sets: building a friend list and finding mutual friends.',
         starterCode: `#include "stanford.h"
 
+// Helper function to simulate file reading (for browser environment)
+// In a real Qt Creator environment, you would use:
+// ifstream in;
+// Vector<string> lines;
+// if (openFile(in, filename)) {
+//     lines = readLines(in);
+// }
+Vector<string> readFileLines(string filename) {
+    // Simulated file content for testing
+    if (filename == "buddies.txt") {
+        return {"Ngoc Emily", "Emily Kavel"};
+    }
+    return {};
+}
+
 /*
  * Function: friendList
  * --------------------
  * Reads friend relationships from a file and writes them to a Map.
- * Friendships are bi-directional.
+ * Friendships are bi-directional, so if Emily is friends with Ngoc,
+ * Ngoc is friends with Emily.
+ * The file contains one friend relationship per line, with names separated by a single space.
  */
 Map<string, Set<string>> friendList(string filename) {
     Map<string, Set<string>> friends;
+    Vector<string> lines = readFileLines(filename);
+    
     // TODO: Implement this function
+    // Process each line and add bidirectional friendships
+    
     return friends;
 }
 
 /*
  * Function: mutualFriends
  * -----------------------
- * Returns the names of the mutual friends between friend1 and friend2.
+ * Takes in the friendList and two strings representing two friends,
+ * and returns the names of the mutual friends they have in common.
  */
-Set<string> mutualFriends(Map<string, Set<string>>& friends, string friend1, string friend2) {
+Set<string> mutualFriends(Map<string, Set<string>>& friendList, string friend1, string friend2) {
     Set<string> mutual;
     // TODO: Implement this function
     return mutual;
 }
 
 int main() {
-    // Note: We don't have actual file I/O in this browser environment easily for custom files,
-    // so we might need to mock or just test logic if file reading isn't supported directly yet.
-    // However, the prompt asks for standard file reading code.
-
-    // Let's create a dummy map to test mutualFriends
-    Map<string, Set<string>> myFriends;
-    myFriends["Emily"] = {"Ngoc", "Kavel"};
-    myFriends["Ngoc"] = {"Emily"};
-    myFriends["Kavel"] = {"Emily"};
-
-    Set<string> expected = {"Emily"};
-    EXPECT_EQUAL(mutualFriends(myFriends, "Ngoc", "Kavel"), expected);
+    // Test friendList
+    Map<string, Set<string>> friends = friendList("buddies.txt");
+    
+    Map<string, Set<string>> expected;
+    expected["Emily"] = {"Ngoc", "Kavel"};
+    expected["Ngoc"] = {"Emily"};
+    expected["Kavel"] = {"Emily"};
+    
+    EXPECT_EQUAL(friends, expected);
+    
+    // Test mutualFriends
+    Set<string> mutual = mutualFriends(friends, "Ngoc", "Kavel");
+    Set<string> expectedMutual = {"Emily"};
+    EXPECT_EQUAL(mutual, expectedMutual);
+    
+    // Test with no mutual friends
+    Set<string> mutual2 = mutualFriends(friends, "Ngoc", "Kavel");
+    // Ngoc and Kavel both have Emily as a friend, so mutual should be {Emily}
+    EXPECT_EQUAL(mutual2.size(), 1);
+    EXPECT_EQUAL(mutual2.contains("Emily"), true);
     
     return 0;
 }
@@ -550,7 +594,9 @@ int main() {
 /*
  * Function: twice
  * ---------------
- * Returns a set containing all the numbers in the vector that appear exactly twice.
+ * Takes a vector of integers and returns a set containing all the numbers
+ * in the vector that appear exactly twice.
+ * Example: passing {1, 3, 1, 4, 3, 7, -2, 0, 7, -2, -2, 1} returns {3, 7}.
  */
 Set<int> twice(Vector<int>& v) {
     Set<int> result;
@@ -559,9 +605,25 @@ Set<int> twice(Vector<int>& v) {
 }
 
 int main() {
-    Vector<int> v = {1, 3, 1, 4, 3, 7, -2, 0, 7, -2, -2, 1};
-    Set<int> expected = {3, 7};
-    EXPECT_EQUAL(twice(v), expected);
+    // Test case from handout
+    Vector<int> v1 = {1, 3, 1, 4, 3, 7, -2, 0, 7, -2, -2, 1};
+    Set<int> expected1 = {3, 7};
+    EXPECT_EQUAL(twice(v1), expected1);
+    
+    // Test with no numbers appearing twice
+    Vector<int> v2 = {1, 2, 3, 4, 5};
+    Set<int> expected2 = {};
+    EXPECT_EQUAL(twice(v2), expected2);
+    
+    // Test with all numbers appearing twice
+    Vector<int> v3 = {1, 1, 2, 2, 3, 3};
+    Set<int> expected3 = {1, 2, 3};
+    EXPECT_EQUAL(twice(v3), expected3);
+    
+    // Test with numbers appearing once, twice, and three times
+    Vector<int> v4 = {5, 5, 5, 10, 10, 20};
+    Set<int> expected4 = {10};
+    EXPECT_EQUAL(twice(v4), expected4);
     
     return 0;
 }
@@ -587,10 +649,35 @@ int checkBalance(string code) {
 }
 
 int main() {
-    EXPECT_EQUAL(checkBalance("if (a(4) > 9) { foo(a(2)); }"), -1);
-    EXPECT_EQUAL(checkBalance("for (i=0;i<a;(3};i++) { foo{); )"), 15);
-    EXPECT_EQUAL(checkBalance("while (true) foo(); }{ ()"), 20);
-    EXPECT_EQUAL(checkBalance("if (x) {"), 8);
+    // Test case 1: Balanced string
+    // index:    0123456789012345678901234567
+    string s1 = "if (a(4) > 9) { foo(a(2)); }";
+    EXPECT_EQUAL(checkBalance(s1), -1);
+    
+    // Test case 2: } is out of order (returns 15)
+    // index:    01234567890123456789012345678901
+    string s2 = "for (i=0;i<a;(3};i++) { foo{); )";
+    EXPECT_EQUAL(checkBalance(s2), 15);
+    
+    // Test case 3: } doesn't match any { (returns 20)
+    // index:    0123456789012345678901234
+    string s3 = "while (true) foo(); }{ ()";
+    EXPECT_EQUAL(checkBalance(s3), 20);
+    
+    // Test case 4: { is never closed (returns 8)
+    // index:    01234567
+    string s4 = "if (x) {";
+    EXPECT_EQUAL(checkBalance(s4), 8);
+    
+    // Additional test: Empty string
+    EXPECT_EQUAL(checkBalance(""), -1);
+    
+    // Additional test: Only opening
+    EXPECT_EQUAL(checkBalance("((("), 3);
+    
+    // Additional test: Only closing
+    EXPECT_EQUAL(checkBalance(")))"), 0);
+    
     return 0;
 }
 `
@@ -721,9 +808,16 @@ int recursionMystery(int x, int y) {
 }
 
 int main() {
-    cout << "recursionMystery(6, 13) = " << recursionMystery(6, 13) << endl;
-    cout << "recursionMystery(14, 10) = " << recursionMystery(14, 10) << endl;
-    cout << "recursionMystery(37, 12) = " << recursionMystery(37, 12) << endl;
+    // Test cases from handout
+    EXPECT_EQUAL(recursionMystery(6, 13), 6);
+    EXPECT_EQUAL(recursionMystery(14, 10), 4);
+    EXPECT_EQUAL(recursionMystery(37, 12), 1);
+    
+    // Additional test cases
+    EXPECT_EQUAL(recursionMystery(5, 3), 2);
+    EXPECT_EQUAL(recursionMystery(10, 5), 0);
+    EXPECT_EQUAL(recursionMystery(1, 5), 1);
+    
     return 0;
 }
 `
@@ -748,6 +842,14 @@ int main() {
     // Trace through the execution in your mind or on paper!
     string result = reverseOf("stop");
     cout << "Result: " << result << endl;
+    
+    // Test cases
+    EXPECT_EQUAL(reverseOf("stop"), "pots");
+    EXPECT_EQUAL(reverseOf(""), "");
+    EXPECT_EQUAL(reverseOf("a"), "a");
+    EXPECT_EQUAL(reverseOf("hello"), "olleh");
+    EXPECT_EQUAL(reverseOf("recursion"), "noisrucer");
+    
     return 0;
 }
 `

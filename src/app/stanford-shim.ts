@@ -12,6 +12,7 @@ export const STANFORD_SHIM = `
 #include <iomanip>
 #include <initializer_list>
 #include <cctype>
+#include <functional>
 
 using namespace std;
 
@@ -54,17 +55,76 @@ public:
     bool isEmpty() const { return _v.empty(); }
     void clear() { _v.clear(); }
     
-    void add(T val) { _v.push_back(val); }
-    void push_back(T val) { _v.push_back(val); }
-    void insert(int i, T val) { _v.insert(_v.begin() + i, val); }
-    void remove(int i) { _v.erase(_v.begin() + i); }
+    void add(const T& val) { _v.push_back(val); }
+    void push_back(const T& val) { _v.push_back(val); }
+    Vector<T>& addAll(const Vector<T>& v) {
+        for(const auto& val : v) add(val);
+        return *this;
+    }
+    void insert(int i, const T& val) { 
+        if(i < 0 || i > (int)_v.size()) error("Vector::insert: index out of range");
+        _v.insert(_v.begin() + i, val); 
+    }
+    T remove(int i) { 
+        if(i < 0 || i >= (int)_v.size()) error("Vector::remove: index out of range");
+        T val = _v[i];
+        _v.erase(_v.begin() + i);
+        return val;
+    }
     
-    T get(int i) const { return _v.at(i); }
-    void set(int i, T val) { _v.at(i) = val; }
+    const T& get(int i) const { 
+        if(i < 0 || i >= (int)_v.size()) error("Vector::get: index out of range");
+        return _v.at(i); 
+    }
+    void set(int i, const T& val) { 
+        if(i < 0 || i >= (int)_v.size()) error("Vector::set: index out of range");
+        _v.at(i) = val; 
+    }
     
-    T& operator[](int i) { return _v[i]; }
-    const T& operator[](int i) const { return _v[i]; }
-    void operator+=(T val) { add(val); }
+    bool equals(const Vector<T>& v) const { return _v == v._v; }
+    
+    void mapAll(std::function<void (const T&)> fn) const {
+        for(const auto& elem : _v) fn(elem);
+    }
+    
+    void sort() { std::sort(_v.begin(), _v.end()); }
+    
+    Vector<T> subList(int start, int length) const {
+        if(start < 0 || start > (int)_v.size() || start + length < 0 || start + length > (int)_v.size() || length < 0)
+            error("Vector::subList: invalid range");
+        Vector<T> result;
+        for(int i = start; i < start + length; i++) result.add(_v[i]);
+        return result;
+    }
+    
+    Vector<T> subList(int start) const {
+        return subList(start, _v.size() - start);
+    }
+    
+    T& operator[](int i) { 
+        if(i < 0 || i >= (int)_v.size()) error("Vector::operator[]: index out of range");
+        return _v[i]; 
+    }
+    const T& operator[](int i) const { 
+        if(i < 0 || i >= (int)_v.size()) error("Vector::operator[]: index out of range");
+        return _v[i]; 
+    }
+    
+    Vector<T> operator+(const Vector<T>& v2) const {
+        Vector<T> result = *this;
+        return result.addAll(v2);
+    }
+    
+    Vector<T> operator+(const T& elem) const {
+        Vector<T> result = *this;
+        result.add(elem);
+        return result;
+    }
+    
+    Vector<T>& operator+=(const Vector<T>& v2) { return addAll(v2); }
+    Vector<T>& operator+=(const T& val) { add(val); return *this; }
+    
+    Vector<T>& operator,(const T& value) { add(value); return *this; }
     
     string toString() const {
         stringstream ss; ss << "{";
@@ -79,9 +139,69 @@ public:
     
     typename vector<T>::iterator begin() { return _v.begin(); }
     typename vector<T>::iterator end() { return _v.end(); }
+    typename vector<T>::const_iterator begin() const { return _v.begin(); }
+    typename vector<T>::const_iterator end() const { return _v.end(); }
     
     bool operator==(const Vector<T>& other) const { return _v == other._v; }
     bool operator!=(const Vector<T>& other) const { return _v != other._v; }
+    bool operator<(const Vector<T>& v2) const {
+        auto it1 = _v.begin(), it2 = v2._v.begin();
+        auto end1 = _v.end(), end2 = v2._v.end();
+        while(it1 != end1 && it2 != end2) {
+            if(*it1 < *it2) return true;
+            if(*it2 < *it1) return false;
+            ++it1; ++it2;
+        }
+        return it1 == end1 && it2 != end2;
+    }
+    bool operator<=(const Vector<T>& v2) const { return *this < v2 || *this == v2; }
+    bool operator>(const Vector<T>& v2) const { return v2 < *this; }
+    bool operator>=(const Vector<T>& v2) const { return v2 <= *this; }
+};
+
+// GridLocation must be defined before GridLocationRange
+struct GridLocation {
+    int row, col;
+    GridLocation(int r=0, int c=0) : row(r), col(c) {}
+    string toString() const {
+        return "r" + to_string(row) + "c" + to_string(col);
+    }
+};
+bool operator==(const GridLocation& a, const GridLocation& b) { return a.row == b.row && a.col == b.col; }
+ostream& operator<<(ostream& os, const GridLocation& g) { os << g.toString(); return os; }
+
+// Forward declaration for GridLocationRange
+class GridLocationRange {
+private:
+    int _startRow, _startCol, _endRow, _endCol;
+    bool _rowMajor;
+    Vector<GridLocation> _locs;
+    void _buildLocs() {
+        _locs.clear();
+        if(_rowMajor) {
+            for(int r = _startRow; r <= _endRow; r++) {
+                for(int c = _startCol; c <= _endCol; c++) {
+                    _locs.add(GridLocation(r, c));
+                }
+            }
+        } else {
+            for(int c = _startCol; c <= _endCol; c++) {
+                for(int r = _startRow; r <= _endRow; r++) {
+                    _locs.add(GridLocation(r, c));
+                }
+            }
+        }
+    }
+public:
+    GridLocationRange(int startRow, int startCol, int endRow, int endCol, bool rowMajor = true)
+        : _startRow(startRow), _startCol(startCol), _endRow(endRow), _endCol(endCol), _rowMajor(rowMajor) {
+        _buildLocs();
+    }
+    GridLocationRange() : _startRow(0), _startCol(0), _endRow(-1), _endCol(-1), _rowMajor(true) {}
+    typename vector<GridLocation>::iterator begin() { return _locs.begin(); }
+    typename vector<GridLocation>::iterator end() { return _locs.end(); }
+    typename vector<GridLocation>::const_iterator begin() const { return _locs.begin(); }
+    typename vector<GridLocation>::const_iterator end() const { return _locs.end(); }
 };
 
 template <typename T>
@@ -89,27 +209,115 @@ class Grid {
 private:
     int _r, _c;
     vector<vector<T>> _g;
+    void _checkIndexes(int row, int col, const char* prefix) const {
+        if(row < 0 || row >= _r || col < 0 || col >= _c) {
+            stringstream ss;
+            ss << "Grid::" << prefix << ": (" << row << ", " << col << ") is outside of valid range [";
+            if(_r > 0 && _c > 0) {
+                ss << "(0, 0)..(" << (_r-1) << ", " << (_c-1) << ")";
+            }
+            ss << "]";
+            error(ss.str());
+        }
+    }
 public:
     Grid() : _r(0), _c(0) {}
-    Grid(int r, int c) { resize(r,c); }
+    Grid(int r, int c) { resize(r, c); }
+    Grid(int r, int c, const T& value) { resize(r, c); fill(value); }
     Grid(std::initializer_list<std::initializer_list<T>> list) {
         _r = list.size(); _c = (_r > 0) ? list.begin()->size() : 0;
         _g.resize(_r); int i = 0;
-        for (const auto& row : list) { _g[i] = row; i++; }
+        for (const auto& row : list) { 
+            if((int)row.size() != _c) error("Grid::constructor: initializer list is not rectangular");
+            _g[i] = row; i++; 
+        }
     }
     
-    void resize(int r, int c) {
-        _r = r; _c = c; _g.resize(r);
-        for(auto& row : _g) row.resize(c);
+    void clear() {
+        T defaultValue = T();
+        for(int r = 0; r < _r; r++) {
+            for(int c = 0; c < _c; c++) {
+                set(r, c, defaultValue);
+            }
+        }
     }
+    
+    bool equals(const Grid<T>& grid2) const {
+        if(this == &grid2) return true;
+        if(_r != grid2._r || _c != grid2._c) return false;
+        for(int row = 0; row < _r; row++) {
+            for(int col = 0; col < _c; col++) {
+                if(get(row, col) != grid2.get(row, col)) return false;
+            }
+        }
+        return true;
+    }
+    
+    void fill(const T& value) {
+        for(int row = 0; row < _r; row++) {
+            for(int col = 0; col < _c; col++) {
+                set(row, col, value);
+            }
+        }
+    }
+    
+    void resize(int r, int c, bool retain = false) {
+        if(r < 0 || c < 0) {
+            stringstream ss;
+            ss << "Grid::resize: Attempt to resize grid to invalid size (" << r << ", " << c << ")";
+            error(ss.str());
+        }
+        if(r == _r && c == _c && retain) return;
+        
+        vector<vector<T>> oldG = _g;
+        int oldR = _r, oldC = _c;
+        _r = r; _c = c;
+        _g.resize(r);
+        for(auto& row : _g) row.resize(c, T());
+        
+        if(retain) {
+            int minR = (oldR < r) ? oldR : r;
+            int minC = (oldC < c) ? oldC : c;
+            for(int row = 0; row < minR; row++) {
+                for(int col = 0; col < minC; col++) {
+                    _g[row][col] = oldG[row][col];
+                }
+            }
+        }
+    }
+    
     int numRows() const { return _r; }
     int numCols() const { return _c; }
     bool inBounds(int r, int c) const { return r>=0 && c>=0 && r<_r && c<_c; }
-    T get(int r, int c) const { return _g.at(r).at(c); }
-    void set(int r, int c, T val) { _g.at(r).at(c) = val; }
+    bool inBounds(const GridLocation& loc) const { return inBounds(loc.row, loc.col); }
+    bool isEmpty() const { return _r == 0 || _c == 0; }
     
-    vector<T>& operator[](int r) { return _g[r]; }
-    const vector<T>& operator[](int r) const { return _g[r]; }
+    GridLocationRange locations(bool rowMajor = true) const {
+        if(isEmpty()) return GridLocationRange();
+        return GridLocationRange(0, 0, _r - 1, _c - 1, rowMajor);
+    }
+    
+    void mapAll(std::function<void (const T&)> fn) const {
+        for(int i = 0; i < _r; i++) {
+            for(int j = 0; j < _c; j++) {
+                fn(get(i, j));
+            }
+        }
+    }
+    
+    const T& get(int r, int c) const { 
+        _checkIndexes(r, c, "get");
+        return _g.at(r).at(c); 
+    }
+    const T& get(const GridLocation& loc) const { return get(loc.row, loc.col); }
+    
+    void set(int r, int c, const T& val) { 
+        _checkIndexes(r, c, "set");
+        _g.at(r).at(c) = val; 
+    }
+    void set(const GridLocation& loc, const T& val) { set(loc.row, loc.col, val); }
+    
+    int size() const { return _r * _c; }
     
     string toString() const {
         stringstream ss; ss << "{";
@@ -120,6 +328,24 @@ public:
         }
         ss << "}"; return ss.str();
     }
+    
+    string toString2D(string rowStart = "{", string rowEnd = "}", 
+                     string colSeparator = ", ", string rowSeparator = ",\\n ") const {
+        stringstream ss;
+        ss << rowStart;
+        for(int i = 0; i < _r; i++) {
+            if(i > 0) ss << rowSeparator;
+            ss << rowStart;
+            for(int j = 0; j < _c; j++) {
+                if(j > 0) ss << colSeparator;
+                ss << _g[i][j];
+            }
+            ss << rowEnd;
+        }
+        ss << rowEnd;
+        return ss.str();
+    }
+    
     string toDebugString() const {
         stringstream ss; 
         ss << "{\\\"__type\\\": \\\"Grid\\\", \\\"rows\\\": " << _r << ", \\\"cols\\\": " << _c << ", \\\"data\\\": [";
@@ -130,6 +356,40 @@ public:
         }
         ss << "]}"; return ss.str();
     }
+    
+    vector<T>& operator[](int r) { 
+        if(r < 0 || r >= _r) error("Grid::operator[]: row index out of range");
+        return _g[r]; 
+    }
+    const vector<T>& operator[](int r) const { 
+        if(r < 0 || r >= _r) error("Grid::operator[]: row index out of range");
+        return _g[r]; 
+    }
+    T& operator[](const GridLocation& loc) {
+        _checkIndexes(loc.row, loc.col, "operator[]");
+        return _g[loc.row][loc.col];
+    }
+    const T& operator[](const GridLocation& loc) const {
+        _checkIndexes(loc.row, loc.col, "operator[]");
+        return _g[loc.row][loc.col];
+    }
+    
+    bool operator==(const Grid<T>& grid2) const { return equals(grid2); }
+    bool operator!=(const Grid<T>& grid2) const { return !equals(grid2); }
+    bool operator<(const Grid<T>& grid2) const {
+        if(_r != grid2._r) return _r < grid2._r;
+        if(_c != grid2._c) return _c < grid2._c;
+        for(int i = 0; i < _r; i++) {
+            for(int j = 0; j < _c; j++) {
+                if(_g[i][j] < grid2._g[i][j]) return true;
+                if(grid2._g[i][j] < _g[i][j]) return false;
+            }
+        }
+        return false;
+    }
+    bool operator<=(const Grid<T>& grid2) const { return *this < grid2 || *this == grid2; }
+    bool operator>(const Grid<T>& grid2) const { return grid2 < *this; }
+    bool operator>=(const Grid<T>& grid2) const { return grid2 <= *this; }
 };
 
 template <typename T>
@@ -142,10 +402,105 @@ public:
     int size() const { return _s.size(); }
     bool isEmpty() const { return _s.empty(); }
     void clear() { _s.clear(); }
-    void add(T val) { _s.insert(val); }
-    bool contains(T val) const { return _s.find(val) != _s.end(); }
-    void remove(T val) { _s.erase(val); }
-    void operator+=(T val) { add(val); }
+    void add(const T& val) { _s.insert(val); }
+    bool contains(const T& val) const { return _s.find(val) != _s.end(); }
+    void remove(const T& val) { _s.erase(val); }
+    
+    bool equals(const Set<T>& set2) const {
+        if(this == &set2) return true;
+        if(_s.size() != set2._s.size()) return false;
+        auto it1 = _s.begin(), it2 = set2._s.begin();
+        while(it1 != _s.end() && it2 != set2._s.end()) {
+            if(*it1 != *it2) return false;
+            ++it1; ++it2;
+        }
+        return true;
+    }
+    
+    T first() const {
+        if(isEmpty()) error("Set::first: set is empty");
+        return *_s.begin();
+    }
+    
+    T last() const {
+        if(isEmpty()) error("Set::last: set is empty");
+        return *_s.rbegin();
+    }
+    
+    void mapAll(std::function<void (const T&)> fn) const {
+        for(const auto& elem : _s) fn(elem);
+    }
+    
+    Set<T>& difference(const Set<T>& set2) {
+        for(const auto& val : set2._s) {
+            _s.erase(val);
+        }
+        return *this;
+    }
+    
+    Set<T>& intersect(const Set<T>& set2) {
+        Set<T> result;
+        for(const auto& val : _s) {
+            if(set2.contains(val)) result.add(val);
+        }
+        _s = result._s;
+        return *this;
+    }
+    
+    Set<T>& unionWith(const Set<T>& set2) {
+        for(const auto& val : set2._s) {
+            add(val);
+        }
+        return *this;
+    }
+    
+    bool isSubsetOf(const Set<T>& set2) const {
+        for(const auto& val : _s) {
+            if(!set2.contains(val)) return false;
+        }
+        return true;
+    }
+    
+    bool isSupersetOf(const Set<T>& set2) const {
+        return set2.isSubsetOf(*this);
+    }
+    
+    Set<T> operator+(const Set<T>& set2) const {
+        Set<T> result = *this;
+        return result.unionWith(set2);
+    }
+    
+    Set<T> operator+(const T& element) const {
+        Set<T> result = *this;
+        result.add(element);
+        return result;
+    }
+    
+    Set<T> operator*(const Set<T>& set2) const {
+        Set<T> result = *this;
+        return result.intersect(set2);
+    }
+    
+    Set<T> operator-(const Set<T>& set2) const {
+        Set<T> result = *this;
+        return result.difference(set2);
+    }
+    
+    Set<T> operator-(const T& element) const {
+        Set<T> result = *this;
+        result.remove(element);
+        return result;
+    }
+    
+    Set<T>& operator+=(const Set<T>& set2) { return unionWith(set2); }
+    Set<T>& operator+=(const T& val) { add(val); return *this; }
+    
+    Set<T>& operator*=(const Set<T>& set2) { return intersect(set2); }
+    
+    Set<T>& operator-=(const Set<T>& set2) { return difference(set2); }
+    Set<T>& operator-=(const T& val) { remove(val); return *this; }
+    
+    Set<T>& operator,(const T& value) { add(value); return *this; }
     
     string toString() const {
         stringstream ss; ss << "{"; int i=0;
@@ -157,6 +512,27 @@ public:
         for(const auto& val : _s) { ss << _json_val(val) << (i < _s.size()-1 ? ", " : ""); i++; }
         ss << "]"; return ss.str();
     }
+    
+    typename set<T>::iterator begin() { return _s.begin(); }
+    typename set<T>::iterator end() { return _s.end(); }
+    typename set<T>::const_iterator begin() const { return _s.begin(); }
+    typename set<T>::const_iterator end() const { return _s.end(); }
+    
+    bool operator==(const Set<T>& set2) const { return equals(set2); }
+    bool operator!=(const Set<T>& set2) const { return !equals(set2); }
+    bool operator<(const Set<T>& set2) const {
+        auto it1 = _s.begin(), it2 = set2._s.begin();
+        auto end1 = _s.end(), end2 = set2._s.end();
+        while(it1 != end1 && it2 != end2) {
+            if(*it1 < *it2) return true;
+            if(*it2 < *it1) return false;
+            ++it1; ++it2;
+        }
+        return it1 == end1 && it2 != end2;
+    }
+    bool operator<=(const Set<T>& set2) const { return *this < set2 || *this == set2; }
+    bool operator>(const Set<T>& set2) const { return set2 < *this; }
+    bool operator>=(const Set<T>& set2) const { return set2 <= *this; }
 };
 
 template <typename K, typename V>
@@ -169,11 +545,110 @@ public:
     int size() const { return _m.size(); }
     bool isEmpty() const { return _m.empty(); }
     void clear() { _m.clear(); }
-    void put(K k, V v) { _m[k] = v; }
-    bool containsKey(K k) const { return _m.find(k) != _m.end(); }
-    V get(K k) const { if(_m.find(k) == _m.end()) return V(); return _m.at(k); }
-    void remove(K k) { _m.erase(k); }
-    V& operator[](K k) { return _m[k]; }
+    void put(const K& k, const V& v) { _m[k] = v; }
+    bool containsKey(const K& k) const { return _m.find(k) != _m.end(); }
+    V get(const K& k) const { 
+        auto it = _m.find(k);
+        return (it == _m.end()) ? V() : it->second; 
+    }
+    void remove(const K& k) { _m.erase(k); }
+    
+    bool equals(const Map<K, V>& map2) const {
+        if(this == &map2) return true;
+        if(_m.size() != map2._m.size()) return false;
+        for(const auto& [key, val] : _m) {
+            if(!map2.containsKey(key) || map2.get(key) != val) return false;
+        }
+        return true;
+    }
+    
+    K firstKey() const {
+        if(isEmpty()) error("Map::firstKey: map is empty");
+        return _m.begin()->first;
+    }
+    
+    K lastKey() const {
+        if(isEmpty()) error("Map::lastKey: map is empty");
+        return _m.rbegin()->first;
+    }
+    
+    Vector<K> keys() const {
+        Vector<K> result;
+        for(const auto& [key, val] : _m) {
+            result.add(key);
+        }
+        return result;
+    }
+    
+    Vector<V> values() const {
+        Vector<V> result;
+        for(const auto& [key, val] : _m) {
+            result.add(val);
+        }
+        return result;
+    }
+    
+    void mapAll(std::function<void (const K&, const V&)> fn) const {
+        for(const auto& [key, val] : _m) {
+            fn(key, val);
+        }
+    }
+    
+    Map<K, V>& putAll(const Map<K, V>& map2) {
+        for(const auto& [key, val] : map2._m) {
+            put(key, val);
+        }
+        return *this;
+    }
+    
+    Map<K, V>& removeAll(const Map<K, V>& map2) {
+        for(const auto& [key, val] : map2._m) {
+            if(containsKey(key) && get(key) == val) {
+                remove(key);
+            }
+        }
+        return *this;
+    }
+    
+    Map<K, V>& retainAll(const Map<K, V>& map2) {
+        Vector<K> toRemove;
+        for(const auto& [key, val] : _m) {
+            if(!map2.containsKey(key) || map2.get(key) != val) {
+                toRemove.add(key);
+            }
+        }
+        for(const K& key : toRemove) {
+            remove(key);
+        }
+        return *this;
+    }
+    
+    V& operator[](const K& k) { return _m[k]; }
+    const V& operator[](const K& k) const {
+        auto it = _m.find(k);
+        if(it != _m.end()) return it->second;
+        static const V singleton{};
+        return singleton;
+    }
+    
+    Map<K, V> operator+(const Map<K, V>& map2) const {
+        Map<K, V> result = *this;
+        return result.putAll(map2);
+    }
+    
+    Map<K, V> operator-(const Map<K, V>& map2) const {
+        Map<K, V> result = *this;
+        return result.removeAll(map2);
+    }
+    
+    Map<K, V> operator*(const Map<K, V>& map2) const {
+        Map<K, V> result = *this;
+        return result.retainAll(map2);
+    }
+    
+    Map<K, V>& operator+=(const Map<K, V>& map2) { return putAll(map2); }
+    Map<K, V>& operator-=(const Map<K, V>& map2) { return removeAll(map2); }
+    Map<K, V>& operator*=(const Map<K, V>& map2) { return retainAll(map2); }
     
     string toString() const {
         stringstream ss; ss << "{"; int i = 0;
@@ -188,6 +663,29 @@ public:
         }
         ss << "}"; return ss.str();
     }
+    
+    typename map<K, V>::iterator begin() { return _m.begin(); }
+    typename map<K, V>::iterator end() { return _m.end(); }
+    typename map<K, V>::const_iterator begin() const { return _m.begin(); }
+    typename map<K, V>::const_iterator end() const { return _m.end(); }
+    
+    bool operator==(const Map<K, V>& map2) const { return equals(map2); }
+    bool operator!=(const Map<K, V>& map2) const { return !equals(map2); }
+    bool operator<(const Map<K, V>& map2) const {
+        auto it1 = _m.begin(), it2 = map2._m.begin();
+        auto end1 = _m.end(), end2 = map2._m.end();
+        while(it1 != end1 && it2 != end2) {
+            if(it1->first < it2->first) return true;
+            if(it2->first < it1->first) return false;
+            if(it1->second < it2->second) return true;
+            if(it2->second < it1->second) return false;
+            ++it1; ++it2;
+        }
+        return it1 == end1 && it2 != end2;
+    }
+    bool operator<=(const Map<K, V>& map2) const { return *this < map2 || *this == map2; }
+    bool operator>(const Map<K, V>& map2) const { return map2 < *this; }
+    bool operator>=(const Map<K, V>& map2) const { return map2 <= *this; }
 };
 
 // JSON Value helper implementation
@@ -221,9 +719,21 @@ public:
     int size() const { return _v.size(); }
     bool isEmpty() const { return _v.empty(); }
     void clear() { _v.clear(); }
-    void push(T val) { _v.push_back(val); }
-    T pop() { T val = _v.back(); _v.pop_back(); return val; }
-    T peek() const { return _v.back(); }
+    void push(const T& val) { _v.push_back(val); }
+    T pop() { 
+        if(isEmpty()) error("Stack::pop: Attempting to pop an empty stack");
+        T val = _v.back(); 
+        _v.pop_back(); 
+        return val; 
+    }
+    const T& peek() const { 
+        if(isEmpty()) error("Stack::peek: Attempting to peek at an empty stack");
+        return _v.back(); 
+    }
+    
+    bool equals(const Stack<T>& stack2) const {
+        return _v == stack2._v;
+    }
     
     string toString() const {
         stringstream ss; ss << "{";
@@ -235,6 +745,18 @@ public:
         for(size_t i=0; i<_v.size(); i++) ss << _json_val(_v[i]) << (i < _v.size()-1 ? ", " : "");
         ss << "]"; return ss.str();
     }
+    
+    typename vector<T>::iterator begin() { return _v.begin(); }
+    typename vector<T>::iterator end() { return _v.end(); }
+    typename vector<T>::const_iterator begin() const { return _v.begin(); }
+    typename vector<T>::const_iterator end() const { return _v.end(); }
+    
+    bool operator==(const Stack<T>& stack2) const { return _v == stack2._v; }
+    bool operator!=(const Stack<T>& stack2) const { return _v != stack2._v; }
+    bool operator<(const Stack<T>& stack2) const { return _v < stack2._v; }
+    bool operator<=(const Stack<T>& stack2) const { return _v <= stack2._v; }
+    bool operator>(const Stack<T>& stack2) const { return _v > stack2._v; }
+    bool operator>=(const Stack<T>& stack2) const { return _v >= stack2._v; }
 };
 
 template <typename T>
@@ -247,9 +769,21 @@ public:
     int size() const { return _q.size(); }
     bool isEmpty() const { return _q.empty(); }
     void clear() { _q.clear(); }
-    void enqueue(T val) { _q.push_back(val); }
-    T dequeue() { T val = _q.front(); _q.pop_front(); return val; }
-    T peek() const { return _q.front(); }
+    void enqueue(const T& val) { _q.push_back(val); }
+    T dequeue() { 
+        if(isEmpty()) error("Queue::dequeue: Attempting to dequeue an empty queue");
+        T val = _q.front(); 
+        _q.pop_front(); 
+        return val; 
+    }
+    const T& peek() const { 
+        if(isEmpty()) error("Queue::peek: Attempting to peek at an empty queue");
+        return _q.front(); 
+    }
+    
+    bool equals(const Queue<T>& queue2) const {
+        return _q == queue2._q;
+    }
     
     string toString() const {
         stringstream ss; ss << "{";
@@ -261,6 +795,18 @@ public:
         for(size_t i=0; i<_q.size(); i++) ss << _json_val(_q[i]) << (i < _q.size()-1 ? ", " : "");
         ss << "]"; return ss.str();
     }
+    
+    typename deque<T>::iterator begin() { return _q.begin(); }
+    typename deque<T>::iterator end() { return _q.end(); }
+    typename deque<T>::const_iterator begin() const { return _q.begin(); }
+    typename deque<T>::const_iterator end() const { return _q.end(); }
+    
+    bool operator==(const Queue<T>& queue2) const { return _q == queue2._q; }
+    bool operator!=(const Queue<T>& queue2) const { return _q != queue2._q; }
+    bool operator<(const Queue<T>& queue2) const { return _q < queue2._q; }
+    bool operator<=(const Queue<T>& queue2) const { return _q <= queue2._q; }
+    bool operator>(const Queue<T>& queue2) const { return _q > queue2._q; }
+    bool operator>=(const Queue<T>& queue2) const { return _q >= queue2._q; }
 };
 
 template <typename T> ostream& operator<<(ostream& os, const Vector<T>& v) { os << v.toString(); return os; }
@@ -648,15 +1194,7 @@ void urlDecodeInPlace(string& str) { str = urlDecode(str); }
 // --------------------------------------------------------
 // SIMPLE HELPER
 // --------------------------------------------------------
-struct GridLocation {
-    int row, col;
-    GridLocation(int r=0, int c=0) : row(r), col(c) {}
-    string toString() const {
-        return "r" + to_string(row) + "c" + to_string(col);
-    }
-};
-bool operator==(const GridLocation& a, const GridLocation& b) { return a.row == b.row && a.col == b.col; }
-ostream& operator<<(ostream& os, const GridLocation& g) { os << g.toString(); return os; }
+// GridLocation is now defined earlier, before GridLocationRange
 
 // --------------------------------------------------------
 // TESTING

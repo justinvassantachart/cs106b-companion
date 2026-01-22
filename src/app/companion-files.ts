@@ -444,3 +444,316 @@ int main() {
 `
     }
 ];
+
+export const SECTION_2_FILES: CompanionFile[] = [
+    {
+        id: 'grid-basics',
+        title: 'Grid Basics',
+        group: 'Section 2',
+        description: 'Practice with Grids: maxRow and avgNeighborhood.',
+        starterCode: `#include "stanford.h"
+
+/*
+ * Function: maxRow
+ * ----------------
+ * Takes a grid of non-negative integers and an in-bounds grid location
+ * and returns the maximum value in the row of that grid location.
+ */
+int maxRow(Grid<int>& grid, int r, int c) {
+    // TODO: Implement this function
+    return 0;
+}
+
+/*
+ * Function: avgNeighborhood
+ * -------------------------
+ * Takes a grid and a grid location and returns the average of all the
+ * values in the neighborhood of the grid location (N, S, E, W).
+ * Return a truncated average.
+ */
+int avgNeighborhood(Grid<int>& grid, int r, int c) {
+    // TODO: Implement this function
+    return 0;
+}
+
+int main() {
+    // Test maxRow
+    Grid<int> g = { {1, 2, 3}, {4, 5, 6}, {7, 8, 9} };
+    EXPECT_EQUAL(maxRow(g, 1, 1), 6); // Row 1 is {4, 5, 6}, max is 6
+    EXPECT_EQUAL(maxRow(g, 0, 0), 3); // Row 0 is {1, 2, 3}, max is 3
+
+    // Test avgNeighborhood
+    // Neighbors of (1, 1) are 2, 8, 4, 6. Sum = 20, Count = 4, Avg = 5
+    // Neighbors: N(0,1)=2, S(2,1)=8, W(1,0)=4, E(1,2)=6
+    EXPECT_EQUAL(avgNeighborhood(g, 1, 1), 5);
+
+    // Add more tests!
+    return 0;
+}
+`
+    },
+    {
+        id: 'friends',
+        title: 'Friends',
+        group: 'Section 2',
+        description: 'Practice with Maps and Sets: building a friend list and finding mutual friends.',
+        starterCode: `#include "stanford.h"
+
+/*
+ * Function: friendList
+ * --------------------
+ * Reads friend relationships from a file and writes them to a Map.
+ * Friendships are bi-directional.
+ */
+Map<string, Set<string>> friendList(string filename) {
+    Map<string, Set<string>> friends;
+    // TODO: Implement this function
+    return friends;
+}
+
+/*
+ * Function: mutualFriends
+ * -----------------------
+ * Returns the names of the mutual friends between friend1 and friend2.
+ */
+Set<string> mutualFriends(Map<string, Set<string>>& friends, string friend1, string friend2) {
+    Set<string> mutual;
+    // TODO: Implement this function
+    return mutual;
+}
+
+int main() {
+    // Note: We don't have actual file I/O in this browser environment easily for custom files,
+    // so we might need to mock or just test logic if file reading isn't supported directly yet.
+    // However, the prompt asks for standard file reading code.
+
+    // Let's create a dummy map to test mutualFriends
+    Map<string, Set<string>> myFriends;
+    myFriends["Emily"] = {"Ngoc", "Kavel"};
+    myFriends["Ngoc"] = {"Emily"};
+    myFriends["Kavel"] = {"Emily"};
+
+    Set<string> expected = {"Emily"};
+    EXPECT_EQUAL(mutualFriends(myFriends, "Ngoc", "Kavel"), expected);
+    
+    return 0;
+}
+`
+    },
+    {
+        id: 'twice',
+        title: 'Twice',
+        group: 'Section 2',
+        description: 'Practice with Sets: find numbers that appear exactly twice.',
+        starterCode: `#include "stanford.h"
+
+/*
+ * Function: twice
+ * ---------------
+ * Returns a set containing all the numbers in the vector that appear exactly twice.
+ */
+Set<int> twice(Vector<int>& v) {
+    Set<int> result;
+    // TODO: Implement this function
+    return result;
+}
+
+int main() {
+    Vector<int> v = {1, 3, 1, 4, 3, 7, -2, 0, 7, -2, -2, 1};
+    Set<int> expected = {3, 7};
+    EXPECT_EQUAL(twice(v), expected);
+    
+    return 0;
+}
+`
+    },
+    {
+        id: 'check-balance',
+        title: 'Check Balance',
+        group: 'Section 2',
+        description: 'Practice with Stacks: check for balanced parentheses/braces.',
+        starterCode: `#include "stanford.h"
+
+/*
+ * Function: checkBalance
+ * ----------------------
+ * Checks whether the braces/parentheses are balanced.
+ * Return the index at which an imbalance occurs, or -1 if the string is balanced.
+ * If any ( or { are never closed, return the string’s length.
+ */
+int checkBalance(string code) {
+    // TODO: Implement this function
+    return -1;
+}
+
+int main() {
+    EXPECT_EQUAL(checkBalance("if (a(4) > 9) { foo(a(2)); }"), -1);
+    EXPECT_EQUAL(checkBalance("for (i=0;i<a;(3};i++) { foo{); )"), 15);
+    EXPECT_EQUAL(checkBalance("while (true) foo(); }{ ()"), 20);
+    EXPECT_EQUAL(checkBalance("if (x) {"), 8);
+    return 0;
+}
+`
+    },
+    {
+        id: 'oh-no-big-o',
+        title: 'Oh No, Big-O',
+        group: 'Section 2',
+        description: 'Give a tight bound of the nearest runtime complexity class for each code fragment.',
+        starterCode: `#include "stanford.h"
+
+int main() {
+    cout << "--- Oh No, Big-O ---" << endl;
+    
+    // Code Snippet A
+    // int sum = 0;
+    // for (int i = 1; i <= N + 2; i++) {
+    //     sum++;
+    // }
+    // for (int j = 1; j <= N * 2; j++) {
+    //     sum++;
+    // }
+    // cout << sum << endl;
+    cout << "Snippet A: O(?)" << endl;
+
+    // Code Snippet B
+    // int sum = 0;
+    // for (int i = 1; i <= N - 5; i++) {
+    //     for (int j = 1; j <= N - 5; j += 2) {
+    //         sum++;
+    //     }
+    // }
+    // cout << sum << endl;
+    cout << "Snippet B: O(?)" << endl;
+
+    // Code Snippet C
+    // int sum = 0;
+    // for (int i = 0; i < 1000000; i++) {
+    //     for (int j = 1; j <= i; j++) {
+    //         sum += N;
+    //     }
+    //     for (int j = 1; j <= i; j++) {
+    //         sum += N;
+    //     }
+    //     for (int j = 1; j <= i; j++) {
+    //         sum += N;
+    //     }
+    // }
+    // cout << sum << endl;
+    cout << "Snippet C: O(?)" << endl;
+
+    return 0;
+}
+`
+    },
+    {
+        id: 'more-big-o',
+        title: 'More Big O',
+        group: 'Section 2',
+        description: 'Determine the big-O runtime of each function.',
+        starterCode: `#include "stanford.h"
+
+void function1(int n) {
+    for (int i = 0; i < n; i++) {
+        cout << '*' << endl;
+    }
+}
+
+void function2(int n) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            cout << '*' << endl;
+        }
+    }
+}
+
+void function3(int n) {
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            cout << '*' << endl;
+        }
+    }
+}
+
+void function4(int n) {
+    for (int i = 1; i <= n; i *= 2) {
+        cout << '*' << endl;
+    }
+}
+
+/*
+int squigglebah(Vector<int>& v) {
+    int result = 0;
+    for (int i = 0; i < v.size(); i++) {
+        Vector<int> values = v.subList(0, i);
+        for (int j = 0; j < values.size(); j++) {
+            result += values[j];
+        }
+    }
+    return result;
+}
+*/
+
+int main() {
+    cout << "--- More Big O ---" << endl;
+    cout << "function1: O(?)" << endl;
+    cout << "function2: O(?)" << endl;
+    cout << "function3: O(?)" << endl;
+    cout << "function4: O(?)" << endl;
+    cout << "squigglebah: O(?)" << endl;
+    return 0;
+}
+`
+    },
+    {
+        id: 'recursion-mystery',
+        title: 'Recursion Mystery',
+        group: 'Section 2',
+        description: 'Topic: recursive function calls, return value tracing',
+        starterCode: `#include "stanford.h"
+
+int recursionMystery(int x, int y) {
+    if (x < y) {
+        return x;
+    } else {
+        return recursionMystery(x - y, y);
+    }
+}
+
+int main() {
+    cout << "recursionMystery(6, 13) = " << recursionMystery(6, 13) << endl;
+    cout << "recursionMystery(14, 10) = " << recursionMystery(14, 10) << endl;
+    cout << "recursionMystery(37, 12) = " << recursionMystery(37, 12) << endl;
+    return 0;
+}
+`
+    },
+    {
+        id: 'recursion-tracing',
+        title: 'Recursion Tracing',
+        group: 'Section 2',
+        description: 'Topic: Recursion, strings, recursion tracing',
+        starterCode: `#include "stanford.h"
+
+string reverseOf(string s) {
+    if (s.empty()) {
+        return "";
+    } else {
+        return reverseOf(s.substr(1)) + s[0];
+    }
+}
+
+int main() {
+    cout << "Tracing reverseOf(\\"stop\\")" << endl;
+    // Trace through the execution in your mind or on paper!
+    string result = reverseOf("stop");
+    cout << "Result: " << result << endl;
+    return 0;
+}
+`
+    }
+];
+
+// Append to the main FILES array
+FILES.push(...SECTION_2_FILES);
+

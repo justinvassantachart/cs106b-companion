@@ -75,6 +75,13 @@
 
       <!-- Editor Area -->
       <div class="flex-1 relative overflow-hidden bg-background">
+        <div *ngIf="isLoading"
+          class="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
+          <div class="flex flex-col items-center gap-3">
+            <lucide-icon [img]="icons.Loader2" class="w-8 h-8 animate-spin text-primary"></lucide-icon>
+            <span class="text-sm font-medium text-muted-foreground">Loading...</span>
+          </div>
+        </div>
         <app-monaco-editor [code]="studentCode" (codeChange)="handleCodeChange($event)" [breakpoints]="breakpoints"
           (breakpointToggle)="toggleBreakpoint($event)" [theme]="isDark ? 'vs-dark' : 'vs-light'"
           class="w-full h-full block">

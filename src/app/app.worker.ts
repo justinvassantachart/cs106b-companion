@@ -75,6 +75,20 @@ addEventListener('message', async ({ data }) => {
     sharedBuffer = new Int32Array(data.buffer);
   } else if (data.command === 'update-breakpoints') {
     breakpoints = new Set(data.breakpoints);
+  } else if (data.command === 'write-file') {
+    if (!api) await bootstrap();
+    console.log(`[Worker] Writing file: ${data.filename}`);
+    api.memfs.addFile(data.filename, data.content);
+    postMessage({ type: 'log', text: `[FS] Wrote ${data.filename}\n` });
+  } else if (data.command === 'read-file') {
+    if (!api) await bootstrap();
+    try {
+      const content = api.memfs.getFileContents(data.filename);
+      const text = new TextDecoder().decode(content);
+      postMessage({ type: 'file-content', filename: data.filename, content: text });
+    } catch (e) {
+      postMessage({ type: 'error', text: `File not found: ${data.filename}` });
+    }
   } else if (data.command === 'compile') {
     try {
       await bootstrap();

@@ -1,6 +1,9 @@
-import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
+import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestroy, OnInit } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject, of } from 'rxjs';
+import { switchMap, tap, map, catchError, takeUntil } from 'rxjs/operators';
 import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight } from 'lucide-angular';
 
 import { CompanionFile, FILES } from './companion-files';
@@ -41,7 +44,7 @@ export class App implements AfterViewInit {
 
   files = FILES;
   selectedFile: CompanionFile = FILES[0];
-  studentCode: string = this.selectedFile.starterCode;
+  studentCode: string = this.selectedFile.starterCode || '';
 
   // History State
   history: DebuggerState[] = [];
@@ -114,6 +117,7 @@ export class App implements AfterViewInit {
 
   // Theme State
   isDark = true;
+  isLoading = false;
 
   sharedBuffer: Int32Array | null = null;
 
@@ -134,7 +138,7 @@ export class App implements AfterViewInit {
     Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight
   };
 
-  constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) {
+  constructor(private http: HttpClient, private ngZone: NgZone, private cdr: ChangeDetectorRef) {
     // Load theme from storage or default to Dark
     const savedTheme = localStorage.getItem('app-theme');
     this.isDark = savedTheme ? savedTheme === 'dark' : true;
@@ -196,9 +200,53 @@ export class App implements AfterViewInit {
     this.callStackWidth = Math.max(this.MIN_CALL_STACK_WIDTH, Math.min(newWidth, this.MAX_CALL_STACK_WIDTH));
   }
 
-  selectFile(file: CompanionFile) {
-    this.selectedFile = file;
-    this.studentCode = file.starterCode;
+
+
+  private destroy$ = new Subject<void>();
+  private fileSelect$ = new Subject<CompanionFile>();
+
+  ngOnInit() {
+    this.fileSelect$.pipe(
+      takeUntil(this.destroy$),
+      tap(file => {
+        this.selectedFile = file;
+        this.isLoading = true;
+        // Don't clear studentCode immediately to avoid flash, or can clear if desired.
+        // We will keep previous code until new code arrives.
+      }),
+      switchMap(file => {
+        if (!file.srcPath) {
+          return of({ file, code: file.starterCode || '', error: null });
+        }
+        return this.http.get(file.srcPath, { responseType: 'text' }).pipe(
+          map(code => ({ file, code, error: null })),
+          catchError(err => of({ file, code: '', error: err }))
+        );
+      })
+    ).subscribe(({ file, code, error }) => {
+      // Ensure we are still matching the selected file (redundant with switchMap but safe)
+      if (this.selectedFile !== file) return;
+
+      this.isLoading = false;
+
+      if (error) {
+        this.studentCode = `// Error loading file: ${error.message}\n// Path: ${file.srcPath}`;
+      } else {
+        this.studentCode = code;
+      }
+
+      this.handleCodeChange(this.studentCode);
+      this.resetDebugSession();
+      this.cdr.detectChanges();
+    });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  resetDebugSession() {
     this._liveOutputLogs = "";
     this.testResults = [];
     this.activeTab = 'console';
@@ -206,6 +254,10 @@ export class App implements AfterViewInit {
     this.breakpoints.clear();
     this.breakpoints = new Set(this.breakpoints); // Force update
     if (this.editor) this.editor.setExecutionLine(null);
+  }
+
+  selectFile(file: CompanionFile) {
+    this.fileSelect$.next(file);
   }
 
   handleCodeChange(newCode: string) {

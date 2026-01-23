@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, of, from, Subscription } from 'rxjs';
 import { switchMap, tap, map, catchError, takeUntil, debounceTime } from 'rxjs/operators';
-import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight } from 'lucide-angular';
+import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight, LogIn } from 'lucide-angular';
 
 import { CompanionFile, FILES } from './companion-files';
 import { instrumentCode, initTreeSitter, isTreeSitterReady } from './debugger-utils';
@@ -48,8 +48,8 @@ export class App implements AfterViewInit, OnDestroy {
   isSyncing = false;
 
   files = FILES;
-  selectedFile: CompanionFile = FILES[0];
-  studentCode: string = this.selectedFile.starterCode || '';
+  selectedFile: CompanionFile | null = null;
+  studentCode: string = '';
 
   // History State
   history: DebuggerState[] = [];
@@ -140,7 +140,7 @@ export class App implements AfterViewInit, OnDestroy {
 
   // Icon imports for template
   readonly icons = {
-    Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight
+    Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight, LogIn
   };
 
   constructor(
@@ -297,7 +297,7 @@ export class App implements AfterViewInit, OnDestroy {
         this.currentUser = user;
 
         // If user changed (login or logout), reload the current file
-        if (previousUser?.uid !== user?.uid) {
+        if (previousUser?.uid !== user?.uid && this.selectedFile) {
           console.log("User changed, reloading code for file:", this.selectedFile.id);
           // Re-trigger load for the current file
           this.fileSelect$.next(this.selectedFile);
@@ -393,7 +393,9 @@ export class App implements AfterViewInit, OnDestroy {
   handleCodeChange(newCode: string) {
     this.studentCode = newCode;
     // Trigger debounce save
-    this.codeChange$.next({ fileId: this.selectedFile.id, code: newCode });
+    if (this.selectedFile) {
+      this.codeChange$.next({ fileId: this.selectedFile.id, code: newCode });
+    }
   }
 
   private syncFileToWorker(filename: string, content: string) {

@@ -1,6 +1,7 @@
 <app-sidebar [files]="files" [selectedFile]="selectedFile" (selectFile)="selectFile($event)" [currentUser]="currentUser"
   [isSyncing]="isSyncing" (login)="login()" (logout)="logout()">
 
+
   <!-- Main Layout: Vertical Split -->
   <div
     class="flex flex-col h-full w-full bg-background text-foreground font-sans selection:bg-primary/30 overflow-hidden">
@@ -16,13 +17,14 @@
           </button>
           <div class="flex items-center gap-2">
             <lucide-icon [img]="icons.FileCode" class="w-4 h-4 text-muted-foreground"></lucide-icon>
-            <span class="text-sm font-medium text-foreground">{{ selectedFile.title }}.cpp</span>
+            <span class="text-sm font-medium text-foreground">
+              {{ selectedFile ? selectedFile.title + '.cpp' : 'No file selected' }}
+            </span>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
-
-          <button (click)="startDebugger()" [disabled]="isDebugging" [hlmTooltipTrigger]="'Run'"
+          <button (click)="startDebugger()" [disabled]="isDebugging || !selectedFile" [hlmTooltipTrigger]="'Run'"
             class="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm min-w-[80px] justify-center active:scale-95 disabled:active:scale-100">
             <ng-container *ngIf="!isCompiling">
               <lucide-icon [img]="icons.Play" class="w-4 h-4 fill-current"></lucide-icon>
@@ -37,15 +39,16 @@
           <div class="h-6 w-px bg-border mx-2"></div>
 
           <!-- Step Back -->
-          <button (click)="stepBack()" [disabled]="history.length === 0 || (historyIndex !== -1 && historyIndex === 0)"
+          <button (click)="stepBack()"
+            [disabled]="history.length === 0 || (historyIndex !== -1 && historyIndex === 0) || !selectedFile"
             [hlmTooltipTrigger]="'Step Back'"
             class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.StepBack" class="w-4 h-4"></lucide-icon>
           </button>
 
-          <!-- Step Forward (also executes next line when at live position) -->
+          <!-- Step Forward -->
           <button (click)="stepForward()"
-            [disabled]="(historyIndex === -1 && !isPaused) || (history.length === 0 && !isPaused)"
+            [disabled]="((historyIndex === -1 && !isPaused) || (history.length === 0 && !isPaused)) || !selectedFile"
             [hlmTooltipTrigger]="historyIndex === -1 ? 'Execute Next Line' : 'Step Forward'"
             class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.ArrowRight" class="w-4 h-4"></lucide-icon>
@@ -53,45 +56,86 @@
 
           <div class="h-6 w-px bg-border mx-2"></div>
 
-          <button (click)="runAll()" [disabled]="!isDebugging" [hlmTooltipTrigger]="'Continue to End'"
+          <button (click)="runAll()" [disabled]="!isDebugging || !selectedFile" [hlmTooltipTrigger]="'Continue to End'"
             class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.FastForward" class="w-4 h-4"></lucide-icon>
           </button>
 
-          <button (click)="pause()" [disabled]="!isDebugging || isPaused" [hlmTooltipTrigger]="'Pause'"
+          <button (click)="pause()" [disabled]="(!isDebugging || isPaused) || !selectedFile"
+            [hlmTooltipTrigger]="'Pause'"
             class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.Pause" class="w-4 h-4"></lucide-icon>
           </button>
 
-          <button (click)="stop()" [disabled]="!isDebugging" [hlmTooltipTrigger]="'Stop'"
+          <button (click)="stop()" [disabled]="!isDebugging || !selectedFile" [hlmTooltipTrigger]="'Stop'"
             class="p-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md disabled:opacity-30 transition-all active:scale-95 disabled:active:scale-100">
             <lucide-icon [img]="icons.Square" class="w-4 h-4 fill-current"></lucide-icon>
           </button>
         </div>
       </header>
 
-      <!-- Editor Area -->
+      <!-- Editor Area (Switches between Welcome and Editor) -->
       <div class="flex-1 relative overflow-hidden bg-background">
-        <div *ngIf="isLoading"
-          class="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
-          <div class="flex flex-col items-center gap-3">
-            <lucide-icon [img]="icons.Loader2" class="w-8 h-8 animate-spin text-primary"></lucide-icon>
-            <span class="text-sm font-medium text-muted-foreground">Loading...</span>
+
+        <!-- WELCOME SCREEN (Condition: !selectedFile) -->
+        <div *ngIf="!selectedFile"
+          class="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-background via-background to-muted/20">
+          <!-- Icon Container -->
+          <div class="relative mb-8">
+            <div class="absolute inset-0 bg-primary/20 rounded-full blur-2xl scale-150 animate-pulse"></div>
+            <div class="relative p-6 bg-card border border-border rounded-2xl shadow-lg">
+              <lucide-icon [img]="icons.FileCode" class="w-16 h-16 text-primary"></lucide-icon>
+            </div>
           </div>
+
+          <!-- Welcome Text -->
+          <h2 class="text-3xl font-bold text-foreground mb-3 tracking-tight">CS106B Unofficial IDE</h2>
+          <p class="text-lg text-muted-foreground mb-2 max-w-md text-center">
+            Debug code, visualize data structures in the stack and heap, trace back and forth in code, and more.
+          </p>
+          <p class="text-sm text-muted-foreground/70 mb-8 max-w-md text-center">
+            Select a file from the sidebar to get started
+          </p>
+
+          <!-- Quick Actions -->
+          <div class="flex flex-col items-center gap-4 mt-6">
+            <!-- Sign In Hint -->
+            <div
+              class="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-full border border-border/50">
+              <lucide-icon [img]="icons.LogIn" class="w-4 h-4 text-primary"></lucide-icon>
+              <span>Tip: Sign in to save your code and progress.</span>
+            </div>
+          </div>
+
+          <!-- Decorative Elements -->
+          <div class="absolute bottom-8 left-8 w-32 h-32 bg-primary/5 rounded-full blur-3xl"></div>
+          <div class="absolute top-16 right-16 w-24 h-24 bg-primary/5 rounded-full blur-2xl"></div>
         </div>
-        <app-monaco-editor [code]="studentCode" (codeChange)="handleCodeChange($event)" [breakpoints]="breakpoints"
-          (breakpointToggle)="toggleBreakpoint($event)" [theme]="isDark ? 'vs-dark' : 'vs-light'"
-          class="w-full h-full block">
-        </app-monaco-editor>
+
+        <!-- EDITOR & LOADING (Condition: selectedFile) -->
+        <ng-container *ngIf="selectedFile">
+          <div *ngIf="isLoading"
+            class="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
+            <div class="flex flex-col items-center gap-3">
+              <lucide-icon [img]="icons.Loader2" class="w-8 h-8 animate-spin text-primary"></lucide-icon>
+              <span class="text-sm font-medium text-muted-foreground">Loading...</span>
+            </div>
+          </div>
+          <app-monaco-editor [code]="studentCode" (codeChange)="handleCodeChange($event)" [breakpoints]="breakpoints"
+            (breakpointToggle)="toggleBreakpoint($event)" [theme]="isDark ? 'vs-dark' : 'vs-light'"
+            class="w-full h-full block">
+          </app-monaco-editor>
+        </ng-container>
       </div>
     </div>
 
-    <!-- Horizontal Sash (VS Code-style resize handle) -->
-    <app-sash class="sash-container-horizontal" orientation="horizontal" (sashStart)="onBottomSashStart()"
-      (sashChange)="onBottomSashChange($event)"></app-sash>
+    <!-- Horizontal Sash (VS Code-style resize handle) - Only show if file selected -->
+    <app-sash *ngIf="selectedFile" class="sash-container-horizontal" orientation="horizontal"
+      (sashStart)="onBottomSashStart()" (sashChange)="onBottomSashChange($event)"></app-sash>
 
-    <!-- BOTTOM PANEL: Debugger Tools (Dynamic Height) -->
-    <div class="flex flex-col shrink-0 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.1)] z-10"
+    <!-- BOTTOM PANEL: Debugger Tools (Dynamic Height) - Only show if file selected -->
+    <div *ngIf="selectedFile"
+      class="flex flex-col shrink-0 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.1)] z-10"
       [style.height.px]="bottomPanelHeight">
 
       <!-- Tabs Header -->
@@ -193,7 +237,6 @@
       </div>
 
     </div>
-
   </div>
 
 </app-sidebar>

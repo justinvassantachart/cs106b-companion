@@ -11,9 +11,13 @@ import {
   lucideLayoutDashboard,
   lucideFolder,
   lucideChevronDown,
-  lucideChevronRight
+  lucideChevronRight,
+  lucideLogIn,
+  lucideLogOut,
+  lucideUser
 } from '@ng-icons/lucide';
 import { CompanionFile } from './companion-files';
+import { User } from 'firebase/auth';
 
 @Component({
   selector: 'app-sidebar',
@@ -33,7 +37,10 @@ import { CompanionFile } from './companion-files';
       lucideLayoutDashboard,
       lucideFolder,
       lucideChevronDown,
-      lucideChevronRight
+      lucideChevronRight,
+      lucideLogIn,
+      lucideLogOut,
+      lucideUser
     })
   ],
   template: `
@@ -82,8 +89,45 @@ import { CompanionFile } from './companion-files';
           </div>
         </div>
         
-        <div hlmSidebarFooter class="p-4 border-t border-border">
-             <div class="text-xs text-muted-foreground">CS106B Companion</div>
+        <!-- Auth Footer -->
+        <div hlmSidebarFooter class="p-3 border-t border-border">
+          <!-- Signed Out State -->
+          <button *ngIf="!currentUser" 
+            (click)="login.emit()"
+            class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-all shadow-sm hover:shadow active:scale-[0.98]">
+            <ng-icon hlm name="lucideLogIn" class="text-base"></ng-icon>
+            <span>Sign in with Google</span>
+          </button>
+          
+          <!-- Signed In State -->
+          <div *ngIf="currentUser" class="space-y-3">
+            <!-- User Profile -->
+            <div class="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+              <img *ngIf="currentUser.photoURL" 
+                [src]="currentUser.photoURL" 
+                crossorigin="anonymous"
+                class="w-9 h-9 rounded-full border-2 border-border shadow-sm">
+              <div *ngIf="!currentUser.photoURL" 
+                class="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center border-2 border-border">
+                <ng-icon hlm name="lucideUser" class="text-primary text-lg"></ng-icon>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-foreground truncate">
+                  {{ currentUser.displayName || 'User' }}
+                </div>
+                <div class="text-xs text-muted-foreground truncate">
+                  {{ currentUser.email }}
+                </div>
+              </div>
+            </div>
+            
+            <!-- Sign Out Button -->
+            <button (click)="logout.emit()"
+              class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-sm font-medium transition-all border border-border hover:border-border/80 active:scale-[0.98]">
+              <ng-icon hlm name="lucideLogOut" class="text-base text-muted-foreground"></ng-icon>
+              <span>Sign out</span>
+            </button>
+          </div>
         </div>
       </hlm-sidebar>
       
@@ -98,7 +142,10 @@ import { CompanionFile } from './companion-files';
 export class AppSidebar {
   @Input() files: CompanionFile[] = [];
   @Input() selectedFile: CompanionFile | null = null;
+  @Input() currentUser: User | null = null;
   @Output() selectFile = new EventEmitter<CompanionFile>();
+  @Output() login = new EventEmitter<void>();
+  @Output() logout = new EventEmitter<void>();
 
   expandedGroups: Set<string> = new Set(['Getting Started', 'Data Structures']);
 

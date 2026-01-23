@@ -1,3 +1,9 @@
+# 1. Apply strict security to the entire app (Required for SharedArrayBuffer)
 /*
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
+
+# 2. Relax security ONLY for the auth bridge (Required for Google Sign-In)
+/assets/auth.html
+  Cross-Origin-Opener-Policy: unsafe-none
+  Cross-Origin-Embedder-Policy: unsafe-none

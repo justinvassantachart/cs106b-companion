@@ -2,8 +2,8 @@ import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestr
 import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subject, of } from 'rxjs';
-import { switchMap, tap, map, catchError, takeUntil } from 'rxjs/operators';
+import { Subject, of, from } from 'rxjs';
+import { switchMap, tap, map, catchError, takeUntil, debounceTime } from 'rxjs/operators';
 import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight } from 'lucide-angular';
 
 import { CompanionFile, FILES } from './companion-files';
@@ -14,6 +14,8 @@ import { SashComponent } from './components/sash/sash.component';
 import { AppSidebar } from './app-sidebar';
 import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
 import { HlmTooltipImports } from '@spartan-ng/helm/tooltip';
+import { PersistenceService } from './services/persistence.service';
+import { getAuth, signInWithCredential, GoogleAuthProvider, User, signOut, onAuthStateChanged } from 'firebase/auth';
 
 interface DebuggerState {
   line: number | null;
@@ -41,6 +43,7 @@ interface DebuggerState {
 })
 export class App implements AfterViewInit {
   @ViewChild(MonacoEditorComponent) editor!: MonacoEditorComponent;
+  currentUser: User | null = null;
 
   files = FILES;
   selectedFile: CompanionFile = FILES[0];
@@ -138,7 +141,12 @@ export class App implements AfterViewInit {
     Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight
   };
 
-  constructor(private http: HttpClient, private ngZone: NgZone, private cdr: ChangeDetectorRef) {
+  constructor(
+    private http: HttpClient,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef,
+    private persistence: PersistenceService
+  ) {
     // Load theme from storage or default to Dark
     const savedTheme = localStorage.getItem('app-theme');
     this.isDark = savedTheme ? savedTheme === 'dark' : true;
@@ -204,27 +212,37 @@ export class App implements AfterViewInit {
 
   private destroy$ = new Subject<void>();
   private fileSelect$ = new Subject<CompanionFile>();
+  private codeChange$ = new Subject<{ fileId: string; code: string }>();
 
   ngOnInit() {
+    // Handle File Selection (Load)
     this.fileSelect$.pipe(
       takeUntil(this.destroy$),
       tap(file => {
         this.selectedFile = file;
         this.isLoading = true;
-        // Don't clear studentCode immediately to avoid flash, or can clear if desired.
-        // We will keep previous code until new code arrives.
       }),
       switchMap(file => {
-        if (!file.srcPath) {
-          return of({ file, code: file.starterCode || '', error: null });
-        }
-        return this.http.get(file.srcPath, { responseType: 'text' }).pipe(
-          map(code => ({ file, code, error: null })),
-          catchError(err => of({ file, code: '', error: err }))
+        // Try local/cloud persistence first
+        return from(this.persistence.loadCode(file.id, this.currentUser?.uid)).pipe(
+          switchMap(savedCode => {
+            if (savedCode) {
+              return of({ file, code: savedCode, error: null });
+            }
+            // Fallback to asset file
+            if (!file.srcPath) {
+              return of({ file, code: file.starterCode || '', error: null });
+            }
+            return this.http.get(file.srcPath, { responseType: 'text' }).pipe(
+              map(code => ({ file, code, error: null })),
+              catchError(err => of({ file, code: '', error: err }))
+            );
+          }),
+          catchError(err => of({ file, code: '', error: err })) // Catch loadCode errors
         );
       })
     ).subscribe(({ file, code, error }) => {
-      // Ensure we are still matching the selected file (redundant with switchMap but safe)
+      // Ensure we are still matching the selected file
       if (this.selectedFile !== file) return;
 
       this.isLoading = false;
@@ -233,17 +251,108 @@ export class App implements AfterViewInit {
         this.studentCode = `// Error loading file: ${error.message}\n// Path: ${file.srcPath}`;
       } else {
         this.studentCode = code;
+        this.syncFileToWorker(file.srcPath || `${file.id}.cpp`, code);
       }
 
-      this.handleCodeChange(this.studentCode);
       this.resetDebugSession();
       this.cdr.detectChanges();
+    });
+
+    // Handle Code Saving (Debounced)
+    this.codeChange$.pipe(
+      takeUntil(this.destroy$),
+      debounceTime(1000)
+    ).subscribe(({ fileId, code }) => {
+      this.persistence.saveCode(fileId, code, this.currentUser?.uid);
+      // Sync to worker on save as well?
+      // Ideally we sync on every change so compilation is fresh.
+      // But syncing to worker is cheap (postMessage). Saving to DB is expensive.
+      // Let's split them if needed, but for now debounced sync is fine.
+      const file = this.files.find(f => f.id === fileId);
+      if (file) {
+        this.syncFileToWorker(file.srcPath || `${fileId}.cpp`, code);
+      }
+    });
+
+    // Listen to Auth State
+    const auth = getAuth();
+    onAuthStateChanged(auth, (user) => {
+      console.log("Auth State Changed:", user);
+      this.ngZone.run(() => {
+        const previousUser = this.currentUser;
+        this.currentUser = user;
+
+        // If user changed (login or logout), reload the current file
+        if (previousUser?.uid !== user?.uid) {
+          console.log("User changed, reloading code for file:", this.selectedFile.id);
+          // Re-trigger load for the current file
+          this.fileSelect$.next(this.selectedFile);
+        }
+
+        this.cdr.detectChanges();
+      });
     });
   }
 
   ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  login() {
+    const width = 500;
+    const height = 600;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+
+    // Open the auth bridge
+    window.open(
+      '/assets/auth.html',
+      'auth_bridge',
+      `width=${width},height=${height},top=${top},left=${left},popup=yes`
+    );
+
+    const authChannel = new BroadcastChannel('auth_channel');
+
+    authChannel.onmessage = (event) => {
+      if (event.data.type === 'AUTH_SUCCESS') {
+        const { idToken, accessToken } = event.data;
+
+        if (idToken) {
+          // Re-create the credential
+          const credential = GoogleAuthProvider.credential(idToken, accessToken);
+          const auth = getAuth();
+
+          signInWithCredential(auth, credential)
+            .then((result) => {
+              console.log("Successfully signed in via credential!", result.user);
+              this.ngZone.run(() => {
+                this.currentUser = result.user;
+                this.cdr.detectChanges();
+              });
+              authChannel.close();
+            })
+            .catch(err => console.error("Final sign-in via credential failed:", err));
+        } else {
+          console.warn("No ID Token received. Relying on Auth State Change (LocalStorage sync)...");
+          authChannel.close();
+          // We don't manually sign in, but we hope onAuthStateChanged picks it up.
+        }
+
+      } else if (event.data.type === 'AUTH_ERROR') {
+        console.error("Popup auth failed:", event.data.error);
+        authChannel.close();
+      }
+    };
+  }
+
+  logout() {
+    const auth = getAuth();
+    signOut(auth).then(() => {
+      this.currentUser = null;
+      console.log("Signed out");
+      this.cdr.detectChanges();
+    });
   }
 
   resetDebugSession() {
@@ -262,6 +371,31 @@ export class App implements AfterViewInit {
 
   handleCodeChange(newCode: string) {
     this.studentCode = newCode;
+    // Trigger debounce save
+    this.codeChange$.next({ fileId: this.selectedFile.id, code: newCode });
+  }
+
+  private syncFileToWorker(filename: string, content: string) {
+    // Strip 'assets/problems/' prefix if exists to make it cleaner in worker FS?
+    // Actually the worker is flat FS usually.
+    // But include paths might rely on it.
+    // Let's just use the full path or the basename.
+    // The previous implementation used `srcPath` directly.
+    // The worker's `compile` function includes headers.
+    // Let's send the basename for simplicity if the include mechanism expects it.
+    // Wait, `compile` expects the main file content directly.
+    // `write-file` is for OTHER files.
+    // BUT: If project has multiple files, they need to be on FS.
+    // For now, we only compile the *active* code.
+    // However, saving it to FS allows other files to include it if we support multi-file.
+    // Let's just pass the filename.
+    if (this.worker) {
+      this.worker.postMessage({
+        command: 'write-file',
+        filename: filename,
+        content: content
+      });
+    }
   }
 
   toggleBreakpoint(line: number) {

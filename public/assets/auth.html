@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Authenticating...</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+
+<body>
+    <div
+        style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: system-ui, sans-serif;">
+        <h3>Authentication Bridge</h3>
+        <p>Please click below to continue signing in.</p>
+        <button id="signin-btn"
+            style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px;">
+            Sign in with Google
+        </button>
+        <p id="status" style="margin-top: 10px; color: #666;"></p>
+    </div>
+
+    <script>
+        // Config loaded from firebase-config.js (gitignored)
+        firebase.initializeApp(window.firebaseConfig);
+
+        const authChannel = new BroadcastChannel('auth_channel');
+        const provider = new firebase.auth.GoogleAuthProvider();
+        const statusEl = document.getElementById('status');
+        const btn = document.getElementById('signin-btn');
+        let authSuccessSent = false;
+
+        function sendAuthSuccess(user, credential) {
+            if (authSuccessSent) return;
+            authSuccessSent = true;
+
+            statusEl.textContent = "Sign-in successful! Closing...";
+
+            // CRITICAL FIX: Only send tokens if we actually have a Google Credential.
+            // Do NOT fall back to user.getIdToken() because that returns a Firebase ID Token,
+            // which will fail if passed to GoogleAuthProvider.credential() in the main app.
+
+            const idToken = (credential && credential.idToken) ? credential.idToken : null;
+            const accessToken = (credential && credential.accessToken) ? credential.accessToken : null;
+
+            console.log("Sending Success to App. Tokens present:", !!idToken);
+
+            authChannel.postMessage({
+                type: 'AUTH_SUCCESS',
+                idToken: idToken,
+                accessToken: accessToken,
+                user: {
+                    uid: user.uid,
+                    displayName: user.displayName,
+                    email: user.email,
+                    photoURL: user.photoURL
+                }
+            });
+            setTimeout(() => window.close(), 500);
+        }
+
+        // Monitor Auth State (Backup & Verification used for both flows)
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) {
+                console.log("onAuthStateChanged: User found:", user);
+                // If the popup promise didn't resolve for some reason, this is a fallback
+                sendAuthSuccess(user, null);
+            }
+        });
+
+        // Use Popup Flow (Triggered by Click to avoid blockers)
+        btn.addEventListener('click', () => {
+            statusEl.textContent = "Opening Google Sign-In...";
+            console.log("Starting SignInWithPopup...");
+
+            // Note: We use Popup here because Redirect was failing to persist state in this environment
+            firebase.auth().signInWithPopup(provider)
+                .then((result) => {
+                    console.log("Popup Result:", result);
+                    if (result && result.user) {
+                        const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+                        sendAuthSuccess(result.user, credential);
+                    } else {
+                        console.warn("Popup returned but no user??", result);
+                        statusEl.textContent = "Error: Popup finished but no user returned. Check console.";
+                    }
+                })
+                .catch((error) => {
+                    console.error("Popup auth failed", error);
+                    if (!authSuccessSent) {
+                        statusEl.textContent = "Error: " + error.message;
+                        authChannel.postMessage({
+                            type: 'AUTH_ERROR',
+                            error: error.message
+                        });
+                    }
+                });
+        });
+    </script>
+</body>
+
+</html>

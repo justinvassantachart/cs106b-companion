@@ -36,6 +36,8 @@
     "@spartan-ng/brain": "^0.0.1-alpha.603",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "firebase": "^12.8.0",
+    "idb": "^8.0.3",
     "lucide-angular": "^0.562.0",
     "monaco-editor": "^0.55.1",
     "rxjs": "~7.8.0",

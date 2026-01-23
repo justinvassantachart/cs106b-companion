@@ -357,6 +357,13 @@ export class App implements AfterViewInit, OnDestroy {
 
   logout() {
     const auth = getAuth();
+    const userId = this.currentUser?.uid;
+
+    // Clear local data before signing out
+    if (userId) {
+      this.persistence.clearUserData(userId);
+    }
+
     signOut(auth).then(() => {
       this.currentUser = null;
       console.log("Signed out");

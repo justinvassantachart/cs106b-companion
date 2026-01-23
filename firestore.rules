@@ -1,0 +1,72 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // =====================================================
+    // User Code Collection
+    // =====================================================
+    // Documents are stored with key format: {userId}_{fileId}
+    // Each user can only read/write their own code documents
+    // =====================================================
+    
+    match /user_code/{documentId} {
+      // Helper function to extract userId from document ID
+      // Document IDs are formatted as: {userId}_{fileId}
+      function getOwnerUserId() {
+        // The userId is the part before the first underscore
+        // For security, we also verify the userId field in the document matches
+        return documentId.split('_')[0];
+      }
+      
+      // Allow read if the authenticated user owns this document
+      allow read: if request.auth != null 
+                  && request.auth.uid == getOwnerUserId();
+      
+      // Allow create if:
+      // 1. User is authenticated
+      // 2. The document ID starts with their userId
+      // 3. The userId field in the document matches their auth uid
+      // 4. Required fields are present with correct types
+      allow create: if request.auth != null
+                    && request.auth.uid == getOwnerUserId()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.keys().hasAll(['fileId', 'code', 'timestamp', 'userId'])
+                    && request.resource.data.fileId is string
+                    && request.resource.data.code is string
+                    && request.resource.data.timestamp is number
+                    && request.resource.data.userId is string;
+      
+      // Allow update if:
+      // 1. User is authenticated
+      // 2. The document ID starts with their userId
+      // 3. The userId field cannot be changed
+      // 4. Required fields are present with correct types
+      allow update: if request.auth != null
+                    && request.auth.uid == getOwnerUserId()
+                    && request.resource.data.userId == request.auth.uid
+                    && resource.data.userId == request.auth.uid  // Can't change ownership
+                    && request.resource.data.keys().hasAll(['fileId', 'code', 'timestamp', 'userId'])
+                    && request.resource.data.fileId is string
+                    && request.resource.data.code is string
+                    && request.resource.data.timestamp is number
+                    && request.resource.data.userId is string;
+      
+      // Allow delete only if user owns the document
+      allow delete: if request.auth != null
+                    && request.auth.uid == getOwnerUserId()
+                    && resource.data.userId == request.auth.uid;
+    }
+    
+    // =====================================================
+    // Default: Deny all other access
+    // =====================================================
+    // Any collection not explicitly matched above is denied
+    // This is the default behavior, but being explicit is good practice
+    // =====================================================
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

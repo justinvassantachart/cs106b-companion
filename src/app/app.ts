@@ -15,6 +15,7 @@ import { AppSidebar } from './app-sidebar';
 import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
 import { HlmTooltipImports } from '@spartan-ng/helm/tooltip';
 import { PersistenceService, SyncStatus } from './services/persistence.service';
+import { PreloadService } from './services/preload.service';
 import { getAuth, signInWithCredential, GoogleAuthProvider, User, signOut, onAuthStateChanged } from 'firebase/auth';
 
 interface DebuggerState {
@@ -146,8 +147,12 @@ export class App implements AfterViewInit, OnDestroy {
     private http: HttpClient,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef,
-    private persistence: PersistenceService
+    private persistence: PersistenceService,
+    private preload: PreloadService
   ) {
+    // Start background preload of compiler and WASM
+    this.preload.preloadCompiler();
+
     // Load theme from storage or default to Dark
     const savedTheme = localStorage.getItem('app-theme');
     this.isDark = savedTheme ? savedTheme === 'dark' : true;

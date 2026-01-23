@@ -1,13 +1,19 @@
 /// <reference lib="webworker" />
 
-// @ts-ignore
-import { API } from '@eduoj/wasm-clang';
 import { STANFORD_SHIM } from './stanford-shim';
 
+// Lazy load wasm-clang to reduce initial bundle size
+let API: any = null;
 let api: any = null;
 
 async function bootstrap() {
   if (api) return;
+
+  // Dynamically import the large wasm-clang module (3.65MB)
+  if (!API) {
+    const module = await import('@eduoj/wasm-clang');
+    API = module.API;
+  }
 
   console.log('[Worker] Initializing API...');
   // postMessage({ type: 'log', text: '[Worker] Initializing Compiler...\n' });
@@ -27,6 +33,18 @@ async function bootstrap() {
       return WebAssembly.compile(await response.arrayBuffer());
     },
     readBuffer: async (filename: string) => {
+      // Try Cache Storage first
+      try {
+        const cache = await caches.open('wasm-cache-v1');
+        const cached = await cache.match(filename);
+        if (cached) {
+          console.log(`[Worker] Cache hit for ${filename}`);
+          return cached.arrayBuffer();
+        }
+      } catch (e) {
+        console.warn(`[Worker] Cache check failed for ${filename}:`, e);
+      }
+
       // postMessage({ type: 'log', text: `[Worker] Reading ${filename}...\n` });
       const response = await fetch(filename);
       if (!response.ok) throw new Error(`Fetch failed: ${filename}`);

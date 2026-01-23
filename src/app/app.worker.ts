@@ -84,6 +84,13 @@ WebAssembly.instantiate = (moduleObject: WebAssembly.Module | BufferSource, impo
         Atomics.wait(sharedBuffer, 0, 0);
       }
     };
+
+    // @ts-ignore
+    importObject['env']._debug_update_line = (line: number) => {
+      // Just notify the main thread that the line changed, but do NOT pause
+      // This is useful for keeping call stack line numbers accurate during recursion
+      postMessage({ type: 'debug-line-update', line });
+    };
   }
   return originalInstantiate(moduleObject, importObject);
 };

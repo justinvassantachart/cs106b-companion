@@ -1510,6 +1510,7 @@ struct FuncTracker {
 
 extern "C" {
     void _debug_wait(int line);
+    void _debug_update_line(int line);
     // Export simple function to dump vars
     void _debug_dump_vars() {
         cout << "[DEBUG:VARS:START]" << endl;

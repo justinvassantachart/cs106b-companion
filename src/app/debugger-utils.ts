@@ -253,6 +253,7 @@ interface FunctionInfo {
     bodyNode: Node;
     parameters: string[];
     startLine: number;
+    returnType: string | null;
 }
 
 function findFunctions(tree: Tree, source: string): FunctionInfo[] {
@@ -263,6 +264,10 @@ function findFunctions(tree: Tree, source: string): FunctionInfo[] {
         // Get the declarator which contains the function name
         const declaratorNode = childByFieldName(node, 'declarator');
         if (!declaratorNode) continue;
+
+        // Get return type
+        const typeNode = childByFieldName(node, 'type');
+        const returnType = typeNode ? typeNode.text : null;
 
         // Extract function name - the declarator might be a function_declarator
         let name = '';
@@ -307,7 +312,8 @@ function findFunctions(tree: Tree, source: string): FunctionInfo[] {
             node,
             bodyNode,
             parameters,
-            startLine: getLineForOffset(source, node.startIndex)
+            startLine: getLineForOffset(source, node.startIndex),
+            returnType
         });
     }
 
@@ -496,6 +502,47 @@ function findVariableDeclarations(bodyNode: Node, source: string): VarDeclInfo[]
     }
 
     return vars;
+}
+
+// ============================================================================
+// Return Statement Detection
+// ============================================================================
+
+interface ReturnStmtInfo {
+    node: Node;
+    exprNode: Node;
+    line: number;
+}
+
+function findReturnStatements(bodyNode: Node, source: string): ReturnStmtInfo[] {
+    const returns: ReturnStmtInfo[] = [];
+    const returnNodes = findAllByTypes(bodyNode, ['return_statement']);
+
+    for (const node of returnNodes) {
+        // Find expression child (argument)
+        // return_statement structure: keyword "return", optional expression, ";"
+        // We look for any child that is NOT "return" or ";"
+        let exprNode: Node | null = null;
+
+        for (let i = 0; i < node.childCount; i++) {
+            const child = node.child(i);
+            if (!child) continue;
+            if (child.type !== 'return' && child.type !== ';') {
+                exprNode = child;
+                break;
+            }
+        }
+
+        if (exprNode) {
+            returns.push({
+                node,
+                exprNode,
+                line: getLineForOffset(source, node.startIndex)
+            });
+        }
+    }
+
+    return returns;
 }
 
 // ============================================================================
@@ -790,6 +837,54 @@ export function instrumentCode(code: string): string {
             }
         }
 
+        // Handle Return Value Tracking
+        // Only if function returns a value (not void) and not a constructor (null type)
+        if (func.returnType && func.returnType !== 'void') {
+            const returnStmts = findReturnStatements(bodyNode, code);
+
+            for (const ret of returnStmts) {
+                // Skip if expression is an initializer list (starts with {) as auto deduction might fail or requires complex handling
+                if (ret.exprNode.text.trim().startsWith('{')) continue;
+
+                // Create a wrapper block: 
+                // { auto _ret = <expr>; DBG_TRACK("return", _ret); DEBUG_STEP(line); return _ret; }
+
+                // Note: We duplicate DEBUG_STEP(line) inside. 
+                // The standard logic below ("Find statements that need DEBUG_STEP") 
+                // will SKIP adding a DEBUG_STEP if we add a replacement edit here (because hasExistingEdit will be true).
+                // So we effectively replace the "Before" step with our custom logic.
+
+                // Ideally we want:
+                // DEBUG_STEP(line);  <-- Pause BEFORE evaluation
+                // { auto _ret = expr; ... DEBUG_STEP(line); return _ret; } <-- Pause AFTER evaluation
+
+                // Smart Instrumentation Strategy:
+                // If the return expression contains a function call (e.g. recursive calls), we want explicit
+                // "Double Pausing": 
+                //   1. Pause BEFORE evaluation (so user can choose to Step Into or Step Over)
+                //   2. Pause AFTER evaluation (so user can see the return value coming back)
+                //
+                // If the return expression is simple (literals, variables, arithmetic), "Double Pausing" is annoying.
+                // We want "Single Pausing" (Pause After):
+                //   1. Update line number silently (so stack is correct)
+                //   2. Evaluate and Capture value
+                //   3. Pause AFTER evaluation (showing user the result before exiting)
+
+                const hasCall = containsCallExpression(ret.exprNode);
+                const preStep = hasCall ? `DEBUG_STEP(${ret.line})` : `_debug_update_line(${ret.line})`;
+
+                const returnName = `_ret_L${ret.line}`; // Unique-ish name per line
+                const replacement = `${preStep}; { auto ${returnName} = ${ret.exprNode.text}; DBG_TRACK(returnValue, ${returnName}); DEBUG_STEP(${ret.line}); return ${returnName}; }`;
+
+                edits.push({
+                    startIndex: ret.node.startIndex,
+                    endIndex: ret.node.endIndex,
+                    text: replacement,
+                    line: ret.line
+                });
+            }
+        }
+
         // Find statements that need DEBUG_STEP
         const statements = findStatementsToInstrument(bodyNode, code);
         for (const stmt of statements) {
@@ -821,6 +916,17 @@ export function instrumentCode(code: string): string {
     result += generateStructPrinters(structs);
 
     return result;
+}
+
+/**
+ * Check if a node or its children contain a call_expression
+ */
+function containsCallExpression(node: Node): boolean {
+    if (node.type === 'call_expression') return true;
+    for (let i = 0; i < node.childCount; i++) {
+        if (containsCallExpression(node.child(i)!)) return true;
+    }
+    return false;
 }
 
 /**

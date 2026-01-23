@@ -20,7 +20,7 @@ export const FILES: CompanionFile[] = [
     {
         id: 'grid-traversal',
         title: 'Grid Traversal',
-        group: 'Data Structures',
+        group: 'Getting Started',
         description: 'Create a 3x3 Grid and fill it with values.',
         srcPath: 'assets/problems/grid-traversal.cpp'
     },
@@ -48,14 +48,14 @@ export const FILES: CompanionFile[] = [
     {
         id: 'heap-visualizer',
         title: 'Heap Visualizer',
-        group: 'Dynamic Memory',
+        group: 'Getting Started',
         description: 'Learn how to use the Stanford Vector class. Add elements and print them.',
         srcPath: 'assets/problems/heap-visualizer.cpp'
     },
     {
         id: 'map-frequency',
         title: 'Map Frequency',
-        group: 'Data Structures',
+        group: 'Getting Started',
         description: 'Count the frequency of characters in a string.',
         srcPath: 'assets/problems/map-frequency.cpp'
     },
@@ -69,7 +69,7 @@ export const FILES: CompanionFile[] = [
     {
         id: 'strlib-test',
         title: 'String Library Test',
-        group: 'Testing',
+        group: 'Getting Started',
         description: 'Verify Stanford String Library functions.',
         srcPath: 'assets/problems/strlib-test.cpp'
     },
@@ -83,7 +83,7 @@ export const FILES: CompanionFile[] = [
     {
         id: 'control-flow-test',
         title: 'Control Flow Test',
-        group: 'Testing',
+        group: 'Getting Started',
         description: 'Test debugger stepping in for loops, if/else, while, and switch.',
         srcPath: 'assets/problems/control-flow-test.cpp'
     }

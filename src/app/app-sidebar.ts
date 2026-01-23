@@ -158,7 +158,7 @@ export class AppSidebar {
   @Output() login = new EventEmitter<void>();
   @Output() logout = new EventEmitter<void>();
 
-  expandedGroups: Set<string> = new Set(['Getting Started', 'Data Structures']);
+  expandedGroups: Set<string> = new Set(['Section 1', 'Section 2']);
 
   get groupedFiles() {
     const groups: { name: string, items: CompanionFile[] }[] = [];
@@ -180,6 +180,21 @@ export class AppSidebar {
     if (ungrouped.length > 0) {
       groups.push({ name: 'Others', items: ungrouped });
     }
+
+    // Sort groups: Section 1 first, Section 2 second, Getting Started last
+    const groupOrder = ['Section 1', 'Section 2', 'Getting Started'];
+    groups.sort((a, b) => {
+      const indexA = groupOrder.indexOf(a.name);
+      const indexB = groupOrder.indexOf(b.name);
+      // If both are in the order list, sort by their position
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      // If only a is in the list, it comes first
+      if (indexA !== -1) return -1;
+      // If only b is in the list, it comes first
+      if (indexB !== -1) return 1;
+      // Otherwise, maintain original order
+      return 0;
+    });
 
     return groups;
   }

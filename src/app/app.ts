@@ -2,7 +2,7 @@ import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestr
 import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subject, of, from } from 'rxjs';
+import { Subject, of, from, Subscription } from 'rxjs';
 import { switchMap, tap, map, catchError, takeUntil, debounceTime } from 'rxjs/operators';
 import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight } from 'lucide-angular';
 
@@ -14,7 +14,7 @@ import { SashComponent } from './components/sash/sash.component';
 import { AppSidebar } from './app-sidebar';
 import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
 import { HlmTooltipImports } from '@spartan-ng/helm/tooltip';
-import { PersistenceService } from './services/persistence.service';
+import { PersistenceService, SyncStatus } from './services/persistence.service';
 import { getAuth, signInWithCredential, GoogleAuthProvider, User, signOut, onAuthStateChanged } from 'firebase/auth';
 
 interface DebuggerState {
@@ -41,9 +41,10 @@ interface DebuggerState {
   templateUrl: './app.html',
   styleUrls: ['./app.css']
 })
-export class App implements AfterViewInit {
+export class App implements AfterViewInit, OnDestroy {
   @ViewChild(MonacoEditorComponent) editor!: MonacoEditorComponent;
   currentUser: User | null = null;
+  isSyncing = false;
 
   files = FILES;
   selectedFile: CompanionFile = FILES[0];
@@ -215,6 +216,14 @@ export class App implements AfterViewInit {
   private codeChange$ = new Subject<{ fileId: string; code: string }>();
 
   ngOnInit() {
+    // Subscribe to sync status
+    this.persistence.syncStatus$.pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(status => {
+      this.isSyncing = status === 'syncing';
+      this.cdr.detectChanges();
+    });
+
     // Handle File Selection (Load)
     this.fileSelect$.pipe(
       takeUntil(this.destroy$),

@@ -1,5 +1,5 @@
 <app-sidebar [files]="files" [selectedFile]="selectedFile" (selectFile)="selectFile($event)" [currentUser]="currentUser"
-  (login)="login()" (logout)="logout()">
+  [isSyncing]="isSyncing" (login)="login()" (logout)="logout()">
 
   <!-- Main Layout: Vertical Split -->
   <div

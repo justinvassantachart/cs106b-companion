@@ -14,7 +14,8 @@ import {
   lucideChevronRight,
   lucideLogIn,
   lucideLogOut,
-  lucideUser
+  lucideUser,
+  lucideRefreshCw
 } from '@ng-icons/lucide';
 import { CompanionFile } from './companion-files';
 import { User } from 'firebase/auth';
@@ -40,7 +41,8 @@ import { User } from 'firebase/auth';
       lucideChevronRight,
       lucideLogIn,
       lucideLogOut,
-      lucideUser
+      lucideUser,
+      lucideRefreshCw
     })
   ],
   template: `
@@ -103,17 +105,25 @@ import { User } from 'firebase/auth';
           <div *ngIf="currentUser" class="space-y-3">
             <!-- User Profile -->
             <div class="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
-              <img *ngIf="currentUser.photoURL" 
-                [src]="currentUser.photoURL" 
-                crossorigin="anonymous"
-                class="w-9 h-9 rounded-full border-2 border-border shadow-sm">
-              <div *ngIf="!currentUser.photoURL" 
-                class="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center border-2 border-border">
-                <ng-icon hlm name="lucideUser" class="text-primary text-lg"></ng-icon>
+              <div class="relative">
+                <img *ngIf="currentUser.photoURL" 
+                  [src]="currentUser.photoURL" 
+                  crossorigin="anonymous"
+                  class="w-9 h-9 rounded-full border-2 border-border shadow-sm">
+                <div *ngIf="!currentUser.photoURL" 
+                  class="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center border-2 border-border">
+                  <ng-icon hlm name="lucideUser" class="text-primary text-lg"></ng-icon>
+                </div>
+                <!-- Syncing Indicator -->
+                <div *ngIf="isSyncing" 
+                  class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-primary rounded-full flex items-center justify-center shadow-sm border border-background">
+                  <ng-icon hlm name="lucideRefreshCw" class="text-[10px] text-primary-foreground animate-spin"></ng-icon>
+                </div>
               </div>
               <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-foreground truncate">
+                <div class="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
                   {{ currentUser.displayName || 'User' }}
+                  <span *ngIf="isSyncing" class="text-[10px] text-muted-foreground font-normal">Syncing...</span>
                 </div>
                 <div class="text-xs text-muted-foreground truncate">
                   {{ currentUser.email }}
@@ -143,6 +153,7 @@ export class AppSidebar {
   @Input() files: CompanionFile[] = [];
   @Input() selectedFile: CompanionFile | null = null;
   @Input() currentUser: User | null = null;
+  @Input() isSyncing: boolean = false;
   @Output() selectFile = new EventEmitter<CompanionFile>();
   @Output() login = new EventEmitter<void>();
   @Output() logout = new EventEmitter<void>();

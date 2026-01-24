@@ -6,7 +6,8 @@ import { Subject, of, from, Subscription } from 'rxjs';
 import { switchMap, tap, map, catchError, takeUntil, debounceTime } from 'rxjs/operators';
 import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight, LogIn } from 'lucide-angular';
 
-import { CompanionFile, FILES } from './companion-files';
+import { CompanionFile } from './companion-files';
+import { FilesService, FilesLoadingStatus } from './services/files.service';
 import { instrumentCode, initTreeSitter, isTreeSitterReady } from './debugger-utils';
 import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
 import { VariableVizComponent } from './components/variable-viz/variable-viz.component';
@@ -47,7 +48,8 @@ export class App implements AfterViewInit, OnDestroy {
   currentUser: User | null = null;
   isSyncing = false;
 
-  files = FILES;
+  files: CompanionFile[] = [];
+  filesLoading: FilesLoadingStatus = 'idle';
   selectedFile: CompanionFile | null = null;
   studentCode: string = '';
 
@@ -148,7 +150,8 @@ export class App implements AfterViewInit, OnDestroy {
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef,
     private persistence: PersistenceService,
-    private preload: PreloadService
+    private preload: PreloadService,
+    private filesService: FilesService
   ) {
     // Start background preload of compiler and WASM
     this.preload.preloadCompiler();
@@ -221,6 +224,22 @@ export class App implements AfterViewInit, OnDestroy {
   private codeChange$ = new Subject<{ fileId: string; code: string }>();
 
   ngOnInit() {
+    // Load files from Firestore
+    this.filesService.loadingStatus$.pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(status => {
+      this.filesLoading = status;
+      this.cdr.detectChanges();
+    });
+
+    this.filesService.loadFiles().pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(files => {
+      this.files = files;
+      console.log('[App] Files loaded from Firestore:', files.length);
+      this.cdr.detectChanges();
+    });
+
     // Subscribe to sync status
     this.persistence.syncStatus$.pipe(
       takeUntil(this.destroy$)

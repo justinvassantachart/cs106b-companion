@@ -67,3 +67,8 @@ The following Stanford library features are currently supported:
 | `HashMap<K,V>` | |
 | `HashSet<T>` | |
 | `PriorityQueue<T>` | |
+
+`#include "stanford.h"` will import all files in the Stanford library. Individually imports are also supported:
+`#include "vector.h"`
+`#include "map.h"`
+...

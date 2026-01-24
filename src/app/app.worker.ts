@@ -6,11 +6,30 @@ const STANFORD_HEADERS = [
   'set.h', 'map.h', 'stack.h', 'queue.h', 'stanford.h'
 ];
 
+const HEADER_CACHE_NAME = 'stanford-headers-v1';
+
 async function loadHeaders(): Promise<{ name: string; content: string }[]> {
+  const cache = await caches.open(HEADER_CACHE_NAME);
+
   const headers = await Promise.all(
     STANFORD_HEADERS.map(async (name) => {
-      const response = await fetch(`/stanford-lib/${name}`);
+      const url = `/stanford-lib/${name}`;
+
+      // Try cache first
+      const cached = await cache.match(url);
+      if (cached) {
+        console.log(`[Worker] Header cache hit: ${name}`);
+        return { name, content: await cached.text() };
+      }
+
+      // Fetch and cache
+      console.log(`[Worker] Fetching header: ${name}`);
+      const response = await fetch(url);
       if (!response.ok) throw new Error(`Failed to load Stanford header: ${name}`);
+
+      // Clone response before caching (response can only be read once)
+      await cache.put(url, response.clone());
+
       return { name, content: await response.text() };
     })
   );

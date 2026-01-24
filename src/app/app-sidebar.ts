@@ -15,7 +15,8 @@ import {
   lucideLogIn,
   lucideLogOut,
   lucideUser,
-  lucideRefreshCw
+  lucideRefreshCw,
+  lucideShield
 } from '@ng-icons/lucide';
 import { CompanionFile } from './companion-files';
 import { User } from 'firebase/auth';
@@ -42,7 +43,8 @@ import { User } from 'firebase/auth';
       lucideLogIn,
       lucideLogOut,
       lucideUser,
-      lucideRefreshCw
+      lucideRefreshCw,
+      lucideShield
     })
   ],
   template: `
@@ -131,6 +133,14 @@ import { User } from 'firebase/auth';
               </div>
             </div>
             
+            <!-- Admin Button (only for admins) -->
+            <button *ngIf="isAdmin"
+              (click)="navigateToAdmin.emit()"
+              class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-all border border-primary/20 hover:border-primary/30 active:scale-[0.98] mb-2">
+              <ng-icon hlm name="lucideShield" class="text-base"></ng-icon>
+              <span>Admin Portal</span>
+            </button>
+            
             <!-- Sign Out Button -->
             <button (click)="logout.emit()"
               class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-sm font-medium transition-all border border-border hover:border-border/80 active:scale-[0.98]">
@@ -154,9 +164,11 @@ export class AppSidebar {
   @Input() selectedFile: CompanionFile | null = null;
   @Input() currentUser: User | null = null;
   @Input() isSyncing: boolean = false;
+  @Input() isAdmin: boolean = false;
   @Output() selectFile = new EventEmitter<CompanionFile>();
   @Output() login = new EventEmitter<void>();
   @Output() logout = new EventEmitter<void>();
+  @Output() navigateToAdmin = new EventEmitter<void>();
 
   expandedGroups: Set<string> = new Set(['Section 1', 'Section 2']);
 

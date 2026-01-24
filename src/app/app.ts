@@ -2,6 +2,7 @@ import { Component, NgZone, ChangeDetectorRef, ViewChild, AfterViewInit, OnDestr
 import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterOutlet } from '@angular/router';
 import { Subject, of, from, Subscription } from 'rxjs';
 import { switchMap, tap, map, catchError, takeUntil, debounceTime } from 'rxjs/operators';
 import { LucideAngularModule, Play, Square, StepForward, StepBack, Bug, FileCode, Terminal, CheckCircle, XCircle, FastForward, Pause, Sun, Moon, Loader2, ArrowRight, CornerDownRight, LogIn } from 'lucide-angular';
@@ -17,6 +18,8 @@ import { HlmSidebarImports } from '@spartan-ng/helm/sidebar';
 import { HlmTooltipImports } from '@spartan-ng/helm/tooltip';
 import { PersistenceService, SyncStatus } from './services/persistence.service';
 import { PreloadService } from './services/preload.service';
+import { AdminService } from './services/admin.service';
+import { Router } from '@angular/router';
 import { getAuth, signInWithCredential, GoogleAuthProvider, User, signOut, onAuthStateChanged } from 'firebase/auth';
 
 interface DebuggerState {
@@ -32,6 +35,7 @@ interface DebuggerState {
   imports: [
     CommonModule,
     FormsModule,
+    RouterOutlet,
     LucideAngularModule,
     MonacoEditorComponent,
     VariableVizComponent,
@@ -151,7 +155,9 @@ export class App implements AfterViewInit, OnDestroy {
     private cdr: ChangeDetectorRef,
     private persistence: PersistenceService,
     private preload: PreloadService,
-    private filesService: FilesService
+    private filesService: FilesService,
+    private adminService: AdminService,
+    private router: Router
   ) {
     // Start background preload of compiler and WASM
     this.preload.preloadCompiler();
@@ -393,6 +399,20 @@ export class App implements AfterViewInit, OnDestroy {
       console.log("Signed out");
       this.cdr.detectChanges();
     });
+  }
+
+  // Admin methods
+  isAdminUser(): boolean {
+    return this.adminService.isAdmin();
+  }
+
+  navigateToAdmin() {
+    this.router.navigate(['/admin']);
+  }
+
+  isRouteActive(): boolean {
+    // Check if we're on a routed page (not the root)
+    return this.router.url !== '/' && this.router.url !== '';
   }
 
   resetDebugSession() {

@@ -79,6 +79,14 @@
               class="p-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md disabled:opacity-30 transition-all active:scale-95 disabled:active:scale-100">
               <lucide-icon [img]="icons.Square" class="w-4 h-4 fill-current"></lucide-icon>
             </button>
+
+            <div class="h-6 w-px bg-border mx-2"></div>
+
+            <!-- Theme Toggle -->
+            <button (click)="toggleTheme()" [hlmTooltipTrigger]="isDark ? 'Light Mode' : 'Dark Mode'"
+              class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all active:scale-95">
+              <lucide-icon [img]="isDark ? icons.Sun : icons.Moon" class="w-4 h-4"></lucide-icon>
+            </button>
           </div>
         </header>
 

@@ -1,6 +1,40 @@
 /// <reference lib="webworker" />
 
-import { STANFORD_SHIM } from './stanford-shim';
+// Stanford library headers to load at runtime (instead of bundled constant)
+const STANFORD_HEADERS = [
+  'debug_core.h', 'common.h', 'strlib.h', 'vector.h', 'grid.h',
+  'set.h', 'map.h', 'stack.h', 'queue.h', 'stanford.h'
+];
+
+const HEADER_CACHE_NAME = 'stanford-headers-v1';
+
+async function loadHeaders(): Promise<{ name: string; content: string }[]> {
+  const cache = await caches.open(HEADER_CACHE_NAME);
+
+  const headers = await Promise.all(
+    STANFORD_HEADERS.map(async (name) => {
+      const url = `/stanford-lib/${name}`;
+
+      // Try cache first
+      const cached = await cache.match(url);
+      if (cached) {
+        console.log(`[Worker] Header cache hit: ${name}`);
+        return { name, content: await cached.text() };
+      }
+
+      // Fetch and cache
+      console.log(`[Worker] Fetching header: ${name}`);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to load Stanford header: ${name}`);
+
+      // Clone response before caching (response can only be read once)
+      await cache.put(url, response.clone());
+
+      return { name, content: await response.text() };
+    })
+  );
+  return headers;
+}
 
 // Lazy load wasm-clang to reduce initial bundle size
 let API: any = null;
@@ -56,8 +90,11 @@ async function bootstrap() {
   await api.ready;
   postMessage({ type: 'log', text: '[Worker] Ready.\n' });
 
-  // Pre-load shim
-  api.memfs.addFile('stanford.h', STANFORD_SHIM);
+  // Load modular Stanford headers from static assets
+  const headers = await loadHeaders();
+  for (const { name, content } of headers) {
+    api.memfs.addFile(name, content);
+  }
 }
 
 const originalInstantiate = WebAssembly.instantiate;
@@ -123,7 +160,7 @@ addEventListener('message', async ({ data }) => {
       const input = `test.cc`;
       const obj = `test.o`;
       const wasm = `test.wasm`;
-      const source = `#include "stanford.h"\n\n${data.code}`;
+      const source = `#include "debug_core.h"\n${data.code}`; // Always prepend debug macros
 
       // 1. Compile (Source -> Object)
       await api.compile({

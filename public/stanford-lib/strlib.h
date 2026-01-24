@@ -58,6 +58,43 @@ int stringLastIndexOf(const string &s, char ch, int startIndex = string::npos);
 int stringLastIndexOf(const string &s, const string &substring,
                       int startIndex = string::npos);
 
+// ============================================================
+// Additional string functions from Stanford Library
+// ============================================================
+
+// Character-to-integer conversion: '0'-'9' -> 0-9
+int charToInteger(char c);
+// Integer-to-character conversion: 0-9 -> '0'-'9'
+char integerToChar(int n);
+
+// Aliases for real/double naming consistency
+string doubleToString(double d);
+double stringToDouble(const string &str);
+bool stringIsDouble(const string &str);
+bool stringIsLong(const string &str, int radix = 10);
+
+// Pointer to hex string
+string pointerToString(void *p);
+
+// Single character case conversion
+char toLowerCase(char ch);
+char toUpperCase(char ch);
+
+// ============================================================
+// std:: namespace extensions
+// ============================================================
+namespace std {
+bool stob(const string &str);
+char stoc(const string &str);
+string to_string(bool b);
+string to_string(char c);
+string to_string(void *p);
+} // namespace std
+
+// ============================================================
+// Implementations
+// ============================================================
+
 string boolToString(bool b) { return (b ? "true" : "false"); }
 
 /*
@@ -430,3 +467,65 @@ string urlDecode(const string &str) {
 }
 
 void urlDecodeInPlace(string &str) { str = urlDecode(str); }
+
+// ============================================================
+// Additional function implementations
+// ============================================================
+
+int charToInteger(char c) {
+  if (c < '0' || c > '9')
+    error("charToInteger: character is not a digit");
+  return c - '0';
+}
+
+char integerToChar(int n) {
+  if (n < 0 || n > 9)
+    error("integerToChar: number must be 0-9");
+  return '0' + n;
+}
+
+string doubleToString(double d) { return realToString(d); }
+
+double stringToDouble(const string &str) { return stringToReal(str); }
+
+bool stringIsDouble(const string &str) { return stringIsReal(str); }
+
+bool stringIsLong(const string &str, int radix) {
+  if (radix <= 0)
+    error("stringIsLong: Illegal radix");
+  istringstream stream(trim(str));
+  stream >> setbase(radix);
+  long value;
+  stream >> value;
+  return !(stream.fail() || !stream.eof());
+}
+
+string pointerToString(void *p) {
+  if (p == nullptr)
+    return "nullptr";
+  ostringstream stream;
+  stream << p;
+  return stream.str();
+}
+
+char toLowerCase(char ch) { return (char)tolower(ch); }
+
+char toUpperCase(char ch) { return (char)toupper(ch); }
+
+// ============================================================
+// std:: namespace implementations
+// ============================================================
+
+namespace std {
+
+bool stob(const string &str) { return stringToBool(str); }
+
+char stoc(const string &str) { return stringToChar(str); }
+
+string to_string(bool b) { return boolToString(b); }
+
+string to_string(char c) { return charToString(c); }
+
+string to_string(void *p) { return pointerToString(p); }
+
+} // namespace std

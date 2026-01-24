@@ -3,10 +3,12 @@
 // Stanford library headers to load at runtime (instead of bundled constant)
 const STANFORD_HEADERS = [
   'debug_core.h', 'common.h', 'strlib.h', 'vector.h', 'grid.h',
-  'set.h', 'map.h', 'stack.h', 'queue.h', 'stanford.h'
+  'set.h', 'map.h', 'stack.h', 'queue.h',
+  'hashmap.h', 'hashset.h', 'priorityqueue.h',  // New collections
+  'stanford.h'
 ];
 
-const HEADER_CACHE_NAME = 'stanford-headers-v1';
+const HEADER_CACHE_NAME = 'stanford-headers-v2';  // Bumped to re-fetch with new headers
 
 async function loadHeaders(): Promise<{ name: string; content: string }[]> {
   const cache = await caches.open(HEADER_CACHE_NAME);

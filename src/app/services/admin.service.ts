@@ -6,7 +6,6 @@ import {
     getDocs,
     doc,
     setDoc,
-    updateDoc,
     deleteDoc,
     Firestore
 } from 'firebase/firestore';
@@ -129,7 +128,7 @@ export class AdminService {
             }
         }
 
-        await updateDoc(docRef, cleanUpdates);
+        await setDoc(docRef, cleanUpdates, { merge: true });
 
         // Refresh the main files service cache
         this.filesService.refreshFiles();

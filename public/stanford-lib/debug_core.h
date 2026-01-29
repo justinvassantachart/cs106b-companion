@@ -88,6 +88,10 @@ struct TracerBase {
 vector<TracerBase *> _active_vars;
 vector<string> _call_stack;
 
+// Forward declaration for heap tracking (defined later)
+template <typename T>
+void _debug_update_heap_info(T *ptr, const char *typeName);
+
 template <typename T> struct Tracer : TracerBase {
   const T &ref;
   Tracer(string n, const T &r) : ref(r) {
@@ -138,6 +142,11 @@ template <typename T> struct Tracer<T *> : TracerBase {
     type = "ptr";
     frame = _call_stack.empty() ? "global" : _call_stack.back();
     _active_vars.push_back(this);
+
+    // Speculatively update heap info if this points to a known heap block
+    if (ref) {
+      _debug_update_heap_info(ref, "known_type");
+    }
   }
   ~Tracer() {
     if (!_active_vars.empty() && _active_vars.back() == this) {
@@ -154,6 +163,8 @@ template <typename T> struct Tracer<T *> : TracerBase {
       return "nullptr";
     stringstream ss;
     ss << ref;
+    // Side effect: Update heap info when querying pointer value
+    _debug_update_heap_info(ref, "ptr_target");
     return ss.str();
   }
   string getAddr() const override {
@@ -205,6 +216,133 @@ struct FuncTracker {
 };
 
 // ============================================================
+// Heap Tracking Infrastructure
+// ============================================================
+
+struct HeapInfo {
+  void *addr;
+  size_t size;  // 0 if unknown
+  string type;  // "raw" or specific type
+  string value; // Captured value string
+  bool is_array;
+};
+
+// Global heap registry: Addr -> Info
+map<void *, HeapInfo> _heap_registrations;
+
+// Re-entrancy guard for memory hooks
+bool _in_mem_hook = false;
+
+// Common helper to register raw allocation
+void _debug_register_allocation(void *p, size_t size, bool is_array) {
+  if (!p)
+    return;
+
+  HeapInfo info;
+  info.addr = p;
+  info.size = size;
+  info.type = "raw";
+  stringstream ss;
+  ss << "Allocated (" << size << " bytes)";
+  info.value = ss.str();
+  info.is_array = is_array;
+  _heap_registrations[p] = info;
+}
+
+// Unregister on delete
+void _debug_unregister_allocation(void *p) {
+  if (!p)
+    return;
+  _heap_registrations.erase(p);
+}
+
+// Global recursion depth counter for heap updates
+static int _debug_depth = 0;
+
+// Update type/value from a typed context (called from struct printers)
+template <typename T>
+void _debug_update_heap_info(T *ptr, const char *typeName) {
+  if (!ptr)
+    return;
+
+  // Allow recursion but prevent infinite loops
+  if (_debug_depth > 50)
+    return;
+  _debug_depth++;
+
+  // Save old hook state (likely false, but could be true if recursive)
+  bool old_hook = _in_mem_hook;
+  _in_mem_hook = true; // Prevent internal allocations (map, stringstream) from
+                       // being tracked
+
+  void *addr = (void *)ptr;
+
+  auto it = _heap_registrations.find(addr);
+  if (it != _heap_registrations.end()) {
+    it->second.type = typeName;
+    // Update value using the typed pointer if it allows streaming
+    if constexpr (is_streamable<T>::value) {
+      stringstream ss;
+      ss << (*ptr);
+      it->second.value = ss.str();
+    }
+  }
+
+  _in_mem_hook = old_hook;
+  _debug_depth--;
+}
+
+// Global overrides for new/delete to track heap allocations
+void *operator new(size_t size) {
+  if (_in_mem_hook) {
+    return malloc(size);
+  }
+  _in_mem_hook = true;
+  void *p = malloc(size);
+  _debug_register_allocation(p, size, false);
+  _in_mem_hook = false;
+  return p;
+}
+
+void *operator new[](size_t size) {
+  if (_in_mem_hook) {
+    return malloc(size);
+  }
+  _in_mem_hook = true;
+  void *p = malloc(size);
+  _debug_register_allocation(p, size, true);
+  _in_mem_hook = false;
+  return p;
+}
+
+void operator delete(void *p) noexcept {
+  if (_in_mem_hook) {
+    free(p);
+    return;
+  }
+  _in_mem_hook = true;
+  _debug_unregister_allocation(p);
+  free(p);
+  _in_mem_hook = false;
+}
+
+void operator delete[](void *p) noexcept {
+  if (_in_mem_hook) {
+    free(p);
+    return;
+  }
+  _in_mem_hook = true;
+  _debug_unregister_allocation(p);
+  free(p);
+  _in_mem_hook = false;
+}
+
+// Sized delete overloads (C++14)
+void operator delete(void *p, size_t) noexcept { operator delete(p); }
+
+void operator delete[](void *p, size_t) noexcept { operator delete[](p); }
+
+// ============================================================
 // External Debug Functions (implemented in WASM runtime)
 // ============================================================
 
@@ -214,11 +352,26 @@ void _debug_update_line(int line);
 
 void _debug_dump_vars() {
   cout << "[DEBUG:VARS:START]" << endl;
+
+  // Dump stack variables
   for (auto it = _active_vars.rbegin(); it != _active_vars.rend(); ++it) {
     cout << (*it)->name << "|" << (*it)->type << "|" << (*it)->getAddr() << "|"
          << (*it)->getValue() << "|" << (*it)->getTargetAddr() << "|"
          << (*it)->frame << "|" << (*it)->getDerefValue() << endl;
   }
+
+  // Dump heap objects
+  for (const auto &[addr, info] : _heap_registrations) {
+    stringstream ssAddr;
+    ssAddr << addr;
+    cout << "*" << ssAddr.str() << "|" << info.type << "|" << ssAddr.str()
+         << "|"                 // Address of the object is its heap address
+         << info.value << "|"   // Value
+         << "0" << "|"          // No target
+         << "heap" << "|"       // Frame = heap
+         << info.value << endl; // Deref value is itself
+  }
+
   cout << "[DEBUG:VARS:END]" << endl;
 
   cout << "[DEBUG:STACK:START]" << endl;
